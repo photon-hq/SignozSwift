@@ -1,4 +1,4 @@
-import OpenTelemetryApi
+@preconcurrency import OpenTelemetryApi
 
 extension Tracer {
 
@@ -7,6 +7,7 @@ extension Tracer {
     /// The span is automatically started before `operation` runs and ended
     /// when it returns. If `operation` throws, the span status is set to
     /// `.error` with the error description before re-throwing.
+    /// Logs emitted inside the operation are automatically linked to this span.
     ///
     /// ```swift
     /// let result = try Signoz.tracer.withSpan("load-config") { span in
@@ -29,15 +30,17 @@ extension Tracer {
             span.setAttribute(key: key, value: value)
         }
 
-        do {
-            let result = try operation(span)
-            span.status = .ok
-            span.end()
-            return result
-        } catch {
-            span.status = .error(description: "\(error)")
-            span.end()
-            throw error
+        return try OpenTelemetry.instance.contextProvider.withActiveSpan(span) {
+            do {
+                let result = try operation(span)
+                span.status = .ok
+                span.end()
+                return result
+            } catch {
+                span.status = .error(description: "\(error)")
+                span.end()
+                throw error
+            }
         }
     }
 
@@ -59,6 +62,7 @@ extension Tracer {
     /// The span is automatically started before `operation` runs and ended
     /// when it returns. If `operation` throws, the span status is set to
     /// `.error` with the error description before re-throwing.
+    /// Logs emitted inside the operation are automatically linked to this span.
     ///
     /// ```swift
     /// let users = try await Signoz.tracer.withSpan("fetch-users", kind: .client) { span in
@@ -81,15 +85,17 @@ extension Tracer {
             span.setAttribute(key: key, value: value)
         }
 
-        do {
-            let result = try await operation(span)
-            span.status = .ok
-            span.end()
-            return result
-        } catch {
-            span.status = .error(description: "\(error)")
-            span.end()
-            throw error
+        return try await OpenTelemetry.instance.contextProvider.withActiveSpan(span) {
+            do {
+                let result = try await operation(span)
+                span.status = .ok
+                span.end()
+                return result
+            } catch {
+                span.status = .error(description: "\(error)")
+                span.end()
+                throw error
+            }
         }
     }
 
