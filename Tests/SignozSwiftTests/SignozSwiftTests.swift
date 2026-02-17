@@ -16,7 +16,7 @@ struct ConfigurationTests {
         #expect(config.serviceName == "test-svc")
         #expect(config.serviceVersion == "")
         #expect(config.environment == "")
-        #expect(config.hostName == "")
+        #expect(config.hostName == .none)
         #expect(config.resourceAttributes.isEmpty)
         #expect(config.headers.isEmpty)
         #expect(config.instrumentationName == "SignozSwift")
@@ -35,13 +35,13 @@ struct ConfigurationTests {
         #expect(config.headers["signoz-ingestion-key"] == "secret")
     }
 
-    @Test("Default transport is TLS")
+    @Test("Default transport is plaintext")
     func transportSecurityDefault() {
         let config = Configuration(serviceName: "test")
-        if case .tls = config.transportSecurity {
+        if case .plaintext = config.transportSecurity {
             // pass
         } else {
-            Issue.record("Expected default .tls")
+            Issue.record("Expected default .plaintext")
         }
     }
 
@@ -450,7 +450,7 @@ struct IntegrationTests {
     func environmentAndHostName() {
         Signoz.start(serviceName: "signoz-swift-env-test") {
             $0.environment = "staging"
-            $0.hostName = "test-host-01"
+            $0.hostName = .custom("test-host-01")
             $0.spanProcessing = .simple
             $0.autoInstrumentation.metricsShim = false
         }
