@@ -41,6 +41,19 @@ extension Tracer {
         }
     }
 
+    /// Execute a synchronous operation within a span, ignoring the span handle.
+    @discardableResult
+    public func withSpan<T>(
+        _ name: String,
+        kind: SpanKind = .internal,
+        attributes: [String: AttributeValue] = [:],
+        _ operation: () throws -> T
+    ) rethrows -> T {
+        try withSpan(name, kind: kind, attributes: attributes) { (_: any Span) in
+            try operation()
+        }
+    }
+
     /// Execute an asynchronous operation within a span.
     ///
     /// The span is automatically started before `operation` runs and ended
@@ -77,6 +90,19 @@ extension Tracer {
             span.status = .error(description: "\(error)")
             span.end()
             throw error
+        }
+    }
+
+    /// Execute an asynchronous operation within a span, ignoring the span handle.
+    @discardableResult
+    public func withSpan<T>(
+        _ name: String,
+        kind: SpanKind = .internal,
+        attributes: [String: AttributeValue] = [:],
+        _ operation: () async throws -> T
+    ) async rethrows -> T {
+        try await withSpan(name, kind: kind, attributes: attributes) { (_: any Span) in
+            try await operation()
         }
     }
 }

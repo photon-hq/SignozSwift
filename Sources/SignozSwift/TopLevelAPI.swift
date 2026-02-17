@@ -22,6 +22,23 @@ public func span<T>(
     try Signoz.tracer.withSpan(name, kind: kind, attributes: attributes, operation)
 }
 
+/// Execute a synchronous operation within a span, without access to the span handle.
+///
+/// ```swift
+/// span("debug.test", attributes: ["debug": .bool(true)]) {
+///     info("Test span sent successfully.")
+/// }
+/// ```
+@discardableResult
+public func span<T>(
+    _ name: String,
+    kind: SpanKind = .internal,
+    attributes: [String: AttributeValue] = [:],
+    _ operation: () throws -> T
+) rethrows -> T {
+    try Signoz.tracer.withSpan(name, kind: kind, attributes: attributes, operation)
+}
+
 /// Execute an asynchronous operation within a span.
 ///
 /// ```swift
@@ -36,6 +53,17 @@ public func span<T>(
     kind: SpanKind = .internal,
     attributes: [String: AttributeValue] = [:],
     _ operation: (any Span) async throws -> T
+) async rethrows -> T {
+    try await Signoz.tracer.withSpan(name, kind: kind, attributes: attributes, operation)
+}
+
+/// Execute an asynchronous operation within a span, without access to the span handle.
+@discardableResult
+public func span<T>(
+    _ name: String,
+    kind: SpanKind = .internal,
+    attributes: [String: AttributeValue] = [:],
+    _ operation: () async throws -> T
 ) async rethrows -> T {
     try await Signoz.tracer.withSpan(name, kind: kind, attributes: attributes, operation)
 }
