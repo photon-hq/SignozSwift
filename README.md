@@ -245,6 +245,32 @@ SignozSwift wraps the official OpenTelemetry Swift SDK — it does not reinvent 
 
 All OTel types (`Span`, `Tracer`, `Logger`, `AttributeValue`, `SpanKind`, etc.) are re-exported via `@_exported import OpenTelemetryApi`, so you only need `import SignozSwift`.
 
+## Testing
+
+Integration tests export telemetry via gRPC to `localhost:4317`. A local OpenTelemetry Collector must be running, otherwise each test will block waiting for gRPC timeouts (~60-240s per test).
+
+Start the collector with Docker:
+
+```bash
+docker run -d --name otel-collector \
+  -p 4317:4317 \
+  -v $(pwd)/otel-collector-config.yaml:/etc/otelcol/config.yaml \
+  otel/opentelemetry-collector:latest
+```
+
+Then run tests:
+
+```bash
+swift test
+```
+
+Start/stop the collector between sessions:
+
+```bash
+docker start otel-collector
+docker stop otel-collector
+```
+
 ## Requirements
 
 - Swift 6.2+
