@@ -27,7 +27,7 @@ Then add `"SignozSwift"` to your target's dependencies:
 import SignozSwift
 
 // Start instrumentation
-Signoz.start(serviceName: "my-app") {
+try Signoz.start(serviceName: "my-app") {
     $0.environment = "production"
     $0.serviceVersion = "1.0.0"
 }
@@ -52,7 +52,7 @@ import SignozSwift
 import Vapor
 
 func configure(_ app: Application) throws {
-    Signoz.start(serviceName: "my-vapor-api") {
+    try Signoz.start(serviceName: "my-vapor-api") {
         $0.endpoint = "ingest.signoz.io:4317"       // or localhost:4317 for self-hosted
         $0.transportSecurity = .tls
         $0.headers = ["signoz-ingestion-key": "..."]
@@ -85,7 +85,7 @@ struct MyCLI: AsyncParsableCommand {
     @Option var input: String
 
     func run() async throws {
-        Signoz.start(serviceName: "my-cli") {
+        try Signoz.start(serviceName: "my-cli") {
             $0.spanProcessing = .simple  // flush immediately for short-lived CLI
         }
         defer { Signoz.shutdown() }
@@ -108,7 +108,7 @@ import SwiftUI
 @main
 struct MyApp: App {
     init() {
-        Signoz.start(serviceName: "my-ios-app") {
+        try Signoz.start(serviceName: "my-ios-app") {
             $0.endpoint = "ingest.signoz.io:4317"
             $0.transportSecurity = .tls
             $0.headers = ["signoz-ingestion-key": "..."]
@@ -130,7 +130,7 @@ struct MyApp: App {
 
 ```swift
 // Start — serviceName is required, everything else has defaults
-Signoz.start(serviceName: "my-app") { config in
+try Signoz.start(serviceName: "my-app") { config in
     config.endpoint = "localhost:4317"  // default
     config.environment = "production"                 // deployment.environment
     config.hostName = .auto                             // host.name (system hostname)
@@ -141,6 +141,7 @@ Signoz.start(serviceName: "my-app") { config in
     config.spanProcessing = .batch()                  // default, use .simple for CLIs
     config.headers = ["signoz-ingestion-key": "..."]
     config.resourceAttributes = ["custom.attr": "value"]
+    config.localPersistencePath = URL(filePath: "/tmp/signoz")  // optional on-disk queue
 }
 
 // Shutdown — flush and clean up
@@ -216,6 +217,7 @@ let attrs: [String: AttributeValue] = [
 | `headers` | `[String: String]` | `[:]` | gRPC metadata headers |
 | `transportSecurity` | `.plaintext` \| `.tls` | `.plaintext` | Transport security mode |
 | `spanProcessing` | `.simple` \| `.batch(...)` | `.batch()` | Span processing strategy |
+| `localPersistencePath` | `URL?` | `nil` | Directory for on-disk telemetry queue. When set, traces/logs/metrics are persisted locally and forwarded when connectivity resumes. |
 | `autoInstrumentation` | `AutoInstrumentation` | see below | Auto-instrumentation toggles |
 
 ### Auto-Instrumentation
