@@ -48,13 +48,17 @@ public struct Configuration: Sendable {
 
     // MARK: - Nested Types
 
-    public enum HostName: Sendable, Equatable {
+    public enum HostName: Sendable, Equatable, ExpressibleByStringLiteral {
         /// Do not include the `host.name` resource attribute.
         case none
         /// Use the system hostname (`ProcessInfo.processInfo.hostName`).
         case auto
         /// Use a custom hostname value.
         case custom(String)
+
+        public init(stringLiteral value: String) {
+            self = .custom(value)
+        }
     }
 
     public enum TransportSecurity: Sendable {

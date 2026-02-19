@@ -463,10 +463,16 @@ struct IntegrationTests {
         }
     }
 
-    @Test("Hostname defaults to system hostname when empty")
+    @Test("Hostname is none by default")
+    func hostNameDefaultsToNone() {
+        let config = Configuration(serviceName: "test")
+        #expect(config.hostName == .none)
+    }
+
+    @Test("Hostname defaults to system hostname when auto")
     func hostNameDefaultsToSystem() {
         Signoz.start(serviceName: "signoz-swift-hostname-test") {
-            // hostName left empty — should auto-detect
+            $0.hostName = .auto
             $0.spanProcessing = .simple
             $0.autoInstrumentation.metricsShim = false
         }
