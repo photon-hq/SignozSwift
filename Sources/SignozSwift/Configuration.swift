@@ -46,6 +46,18 @@ public struct Configuration: Sendable {
     /// Auto-instrumentation toggles.
     public var autoInstrumentation: AutoInstrumentation = .init()
 
+    /// Optional local directory path for persisting telemetry data.
+    ///
+    /// When set, traces, logs, and metrics are written to disk in addition
+    /// to being exported over the network. This ensures telemetry survives
+    /// network outages — the persistence layer queues data locally and
+    /// forwards it to the OTLP exporter when connectivity resumes.
+    ///
+    /// The directory is created automatically if it doesn't exist.
+    ///
+    /// Set to `nil` (default) to disable local persistence.
+    public var localPersistencePath: URL? = nil
+
     // MARK: - Nested Types
 
     public enum HostName: Sendable, Equatable, ExpressibleByStringLiteral {

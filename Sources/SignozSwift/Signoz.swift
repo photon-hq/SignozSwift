@@ -6,6 +6,7 @@ import NIOSSL
 @preconcurrency import OpenTelemetryApi
 import OpenTelemetryProtocolExporterCommon
 import OpenTelemetryProtocolExporterGrpc
+import PersistenceExporter
 import OpenTelemetrySdk
 import SwiftMetricsShim
 
@@ -88,7 +89,7 @@ public enum Signoz {
     public static func start(
         serviceName: String,
         _ configure: ((inout Configuration) -> Void)? = nil
-    ) {
+    ) throws {
         var config = Configuration(serviceName: serviceName)
         configure?(&config)
 
@@ -141,7 +142,15 @@ public enum Signoz {
         resource = Resource(attributes: attrs)
         #endif
 
-        // 3. OTLP configuration
+        // 3. Local persistence directory
+        if let persistenceURL = config.localPersistencePath {
+            try FileManager.default.createDirectory(
+                at: persistenceURL,
+                withIntermediateDirectories: true
+            )
+        }
+
+        // 4. OTLP configuration
         let otlpHeaders: [(String, String)]? = config.headers.isEmpty
             ? nil
             : config.headers.map { ($0.key, $0.value) }
@@ -150,8 +159,14 @@ public enum Signoz {
             headers: otlpHeaders
         )
 
-        // 4. Trace exporter + processor
-        let traceExporter = OtlpTraceExporter(channel: channel, config: otlpConfig)
+        // 5. Trace exporter + processor
+        var traceExporter: any SpanExporter = OtlpTraceExporter(channel: channel, config: otlpConfig)
+        if let persistenceURL = config.localPersistencePath {
+            traceExporter = try PersistenceSpanExporterDecorator(
+                spanExporter: traceExporter,
+                storageURL: persistenceURL.appendingPathComponent("traces")
+            )
+        }
 
         let spanProcessor: any SpanProcessor
         switch config.spanProcessing {
@@ -166,7 +181,7 @@ public enum Signoz {
             )
         }
 
-        // 5. TracerProvider
+        // 6. TracerProvider
         let tracerBuilder = TracerProviderBuilder()
             .with(resource: resource)
             .add(spanProcessor: spanProcessor)
@@ -180,8 +195,14 @@ public enum Signoz {
         let tracerProvider = tracerBuilder.build()
         OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
 
-        // 6. Log exporter + LoggerProvider
-        let logExporter = OtlpLogExporter(channel: channel, config: otlpConfig)
+        // 7. Log exporter + LoggerProvider
+        var logExporter: any LogRecordExporter = OtlpLogExporter(channel: channel, config: otlpConfig)
+        if let persistenceURL = config.localPersistencePath {
+            logExporter = try PersistenceLogExporterDecorator(
+                logRecordExporter: logExporter,
+                storageURL: persistenceURL.appendingPathComponent("logs")
+            )
+        }
         let logProcessor = SimpleLogRecordProcessor(logRecordExporter: logExporter)
         let loggerProvider = LoggerProviderBuilder()
             .with(processors: [logProcessor])
@@ -189,9 +210,15 @@ public enum Signoz {
             .build()
         OpenTelemetry.registerLoggerProvider(loggerProvider: loggerProvider)
 
-        // 7. Metrics shim (bridges swift-metrics → OTel → OTLP)
+        // 8. Metrics shim (bridges swift-metrics → OTel → OTLP)
         if config.autoInstrumentation.metricsShim {
-            let metricExporter = OtlpMetricExporter(channel: channel, config: otlpConfig)
+            var metricExporter: any MetricExporter = OtlpMetricExporter(channel: channel, config: otlpConfig)
+            if let persistenceURL = config.localPersistencePath {
+                metricExporter = try PersistenceMetricExporterDecorator(
+                    metricExporter: metricExporter,
+                    storageURL: persistenceURL.appendingPathComponent("metrics")
+                )
+            }
             let metricReader = PeriodicMetricReaderBuilder(exporter: metricExporter)
                 .setInterval(timeInterval: 60)
                 .build()
@@ -208,7 +235,7 @@ public enum Signoz {
             )
         }
 
-        // 8. URLSession auto-instrumentation (Apple platforms)
+        // 9. URLSession auto-instrumentation (Apple platforms)
         #if canImport(URLSessionInstrumentation)
         if config.autoInstrumentation.urlSession {
             _urlSessionInstrumentation = URLSessionInstrumentation(
@@ -217,7 +244,7 @@ public enum Signoz {
         }
         #endif
 
-        // 9. Store references
+        // 10. Store references
         lock.lock()
         _tracer = tracerProvider.get(
             instrumentationName: config.instrumentationName,

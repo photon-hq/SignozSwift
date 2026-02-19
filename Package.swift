@@ -48,6 +48,7 @@ let package = Package(
                     package: "opentelemetry-swift",
                     condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS])
                 ),
+                .product(name: "PersistenceExporter", package: "opentelemetry-swift"),
                 .product(name: "GRPC", package: "grpc-swift"),
             ]
         ),
