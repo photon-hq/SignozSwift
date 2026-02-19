@@ -9,4 +9,7 @@ jobs:
     uses: photon-hq/buildspace/.github/workflows/release.yaml@main
     with:
       service-name: SignozSwift
+    permissions:
+        contents: write
+        pull-requests: read
     secrets: inherit
