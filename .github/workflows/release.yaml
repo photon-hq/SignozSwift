@@ -1,0 +1,12 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    uses: photon-hq/buildspace/.github/workflows/release.yaml@main
+    with:
+      service-name: SignozSwift
+    secrets: inherit
