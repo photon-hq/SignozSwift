@@ -342,9 +342,9 @@ struct SignozDefaultTests {
 struct IntegrationTests {
 
     @Test("Full lifecycle: start, trace, log, shutdown")
-    func fullLifecycle() throws {
+    func fullLifecycle() {
         // 1. Start — just like a real user would in main.swift or configure()
-        try Signoz.start(serviceName: "signoz-swift-test") {
+        Signoz.start(serviceName: "signoz-swift-test") {
             $0.spanProcessing = .simple
             $0.autoInstrumentation.metricsShim = false
         }
@@ -392,8 +392,8 @@ struct IntegrationTests {
     }
 
     @Test("CLI-style usage with simple processing")
-    func cliUsage() throws {
-        try Signoz.start(serviceName: "signoz-swift-cli-test") {
+    func cliUsage() {
+        Signoz.start(serviceName: "signoz-swift-cli-test") {
             $0.spanProcessing = .simple
             $0.autoInstrumentation.metricsShim = false
         }
@@ -407,8 +407,8 @@ struct IntegrationTests {
     }
 
     @Test("Span with error propagation")
-    func spanErrorHandling() throws {
-        try Signoz.start(serviceName: "signoz-swift-error-test") {
+    func spanErrorHandling() {
+        Signoz.start(serviceName: "signoz-swift-error-test") {
             $0.spanProcessing = .simple
             $0.autoInstrumentation.metricsShim = false
         }
@@ -431,8 +431,8 @@ struct IntegrationTests {
     }
 
     @Test("Async span usage")
-    func asyncSpanUsage() async throws {
-        try Signoz.start(serviceName: "signoz-swift-async-test") {
+    func asyncSpanUsage() async {
+        Signoz.start(serviceName: "signoz-swift-async-test") {
             $0.spanProcessing = .simple
             $0.autoInstrumentation.metricsShim = false
         }
@@ -447,8 +447,8 @@ struct IntegrationTests {
     }
 
     @Test("Environment and hostname resource attributes")
-    func environmentAndHostName() throws {
-        try Signoz.start(serviceName: "signoz-swift-env-test") {
+    func environmentAndHostName() {
+        Signoz.start(serviceName: "signoz-swift-env-test") {
             $0.environment = "staging"
             $0.hostName = .custom("test-host-01")
             $0.spanProcessing = .simple
@@ -470,8 +470,8 @@ struct IntegrationTests {
     }
 
     @Test("Hostname defaults to system hostname when auto")
-    func hostNameDefaultsToSystem() throws {
-        try Signoz.start(serviceName: "signoz-swift-hostname-test") {
+    func hostNameDefaultsToSystem() {
+        Signoz.start(serviceName: "signoz-swift-hostname-test") {
             $0.hostName = .auto
             $0.spanProcessing = .simple
             $0.autoInstrumentation.metricsShim = false
@@ -484,8 +484,8 @@ struct IntegrationTests {
     }
 
     @Test("Literal attributes in real usage")
-    func literalAttributes() throws {
-        try Signoz.start(serviceName: "signoz-swift-literal-test") {
+    func literalAttributes() {
+        Signoz.start(serviceName: "signoz-swift-literal-test") {
             $0.spanProcessing = .simple
             $0.autoInstrumentation.metricsShim = false
         }

@@ -27,7 +27,7 @@ Then add `"SignozSwift"` to your target's dependencies:
 import SignozSwift
 
 // Start instrumentation
-try Signoz.start(serviceName: "my-app") {
+Signoz.start(serviceName: "my-app") {
     $0.environment = "production"
     $0.serviceVersion = "1.0.0"
 }
@@ -52,7 +52,7 @@ import SignozSwift
 import Vapor
 
 func configure(_ app: Application) throws {
-    try Signoz.start(serviceName: "my-vapor-api") {
+    Signoz.start(serviceName: "my-vapor-api") {
         $0.endpoint = "ingest.signoz.io:4317"       // or localhost:4317 for self-hosted
         $0.transportSecurity = .tls
         $0.headers = ["signoz-ingestion-key": "..."]
@@ -85,7 +85,7 @@ struct MyCLI: AsyncParsableCommand {
     @Option var input: String
 
     func run() async throws {
-        try Signoz.start(serviceName: "my-cli") {
+        Signoz.start(serviceName: "my-cli") {
             $0.spanProcessing = .simple  // flush immediately for short-lived CLI
         }
         defer { Signoz.shutdown() }
@@ -108,7 +108,7 @@ import SwiftUI
 @main
 struct MyApp: App {
     init() {
-        try Signoz.start(serviceName: "my-ios-app") {
+        Signoz.start(serviceName: "my-ios-app") {
             $0.endpoint = "ingest.signoz.io:4317"
             $0.transportSecurity = .tls
             $0.headers = ["signoz-ingestion-key": "..."]
@@ -130,7 +130,7 @@ struct MyApp: App {
 
 ```swift
 // Start — serviceName is required, everything else has defaults
-try Signoz.start(serviceName: "my-app") { config in
+Signoz.start(serviceName: "my-app") { config in
     config.endpoint = "localhost:4317"  // default
     config.environment = "production"                 // deployment.environment
     config.hostName = .auto                             // host.name (system hostname)
