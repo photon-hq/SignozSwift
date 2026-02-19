@@ -117,10 +117,14 @@ public enum Signoz {
         if !config.environment.isEmpty {
             attrs["deployment.environment"] = .string(config.environment)
         }
-        let resolvedHostName = config.hostName.isEmpty
-            ? ProcessInfo.processInfo.hostName
-            : config.hostName
-        attrs["host.name"] = .string(resolvedHostName)
+        switch config.hostName {
+        case .none:
+            break
+        case .auto:
+            attrs["host.name"] = .string(ProcessInfo.processInfo.hostName)
+        case .custom(let value):
+            attrs["host.name"] = .string(value)
+        }
         attrs.merge(config.resourceAttributes) { _, new in new }
 
         var resource: Resource

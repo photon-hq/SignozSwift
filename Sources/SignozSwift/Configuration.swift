@@ -22,10 +22,11 @@ public struct Configuration: Sendable {
     /// Shows in SigNoz Logs > Quick Filters > Environment.
     public var environment: String = ""
 
-    /// Host name. Defaults to the system hostname if empty.
-    /// Maps to `host.name` resource attribute.
-    /// Shows in SigNoz Logs > Quick Filters > Hostname.
-    public var hostName: String = ""
+    /// Host name strategy for the `host.name` resource attribute.
+    /// - `.none` — attribute is omitted (default).
+    /// - `.auto` — uses the system hostname at runtime.
+    /// - `.custom("value")` — uses the provided string.
+    public var hostName: HostName = .none
 
     /// Extra resource attributes beyond the built-in ones.
     public var resourceAttributes: [String: AttributeValue] = [:]
@@ -46,6 +47,19 @@ public struct Configuration: Sendable {
     public var autoInstrumentation: AutoInstrumentation = .init()
 
     // MARK: - Nested Types
+
+    public enum HostName: Sendable, Equatable, ExpressibleByStringLiteral {
+        /// Do not include the `host.name` resource attribute.
+        case none
+        /// Use the system hostname (`ProcessInfo.processInfo.hostName`).
+        case auto
+        /// Use a custom hostname value.
+        case custom(String)
+
+        public init(stringLiteral value: String) {
+            self = .custom(value)
+        }
+    }
 
     public enum TransportSecurity: Sendable {
         case plaintext

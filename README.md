@@ -133,7 +133,9 @@ struct MyApp: App {
 Signoz.start(serviceName: "my-app") { config in
     config.endpoint = "localhost:4317"  // default
     config.environment = "production"                 // deployment.environment
-    config.hostName = "web-01"                        // host.name (auto-detected if empty)
+    config.hostName = .auto                             // host.name (system hostname)
+    config.hostName = .custom("web-01")                 // host.name (explicit value)
+    // config.hostName = .none                           // omit host.name (default)
     config.serviceVersion = "1.0.0"
     config.transportSecurity = .plaintext              // default
     config.spanProcessing = .batch()                  // default, use .simple for CLIs
@@ -209,7 +211,7 @@ let attrs: [String: AttributeValue] = [
 | `serviceName` | `String` | *required* | Service name (`service.name`) |
 | `serviceVersion` | `String` | `""` | Service version (`service.version`) |
 | `environment` | `String` | `""` | Deployment environment (`deployment.environment`) |
-| `hostName` | `String` | *system hostname* | Host name (`host.name`) |
+| `hostName` | `.none` \| `.auto` \| `.custom(String)` | `.none` | Host name (`host.name`). `.none` omits the attribute, `.auto` uses the system hostname, `.custom("...")` uses an explicit value. |
 | `resourceAttributes` | `[String: AttributeValue]` | `[:]` | Extra resource attributes |
 | `headers` | `[String: String]` | `[:]` | gRPC metadata headers |
 | `transportSecurity` | `.plaintext` \| `.tls` | `.plaintext` | Transport security mode |
