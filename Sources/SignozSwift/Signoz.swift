@@ -6,6 +6,7 @@ import NIOSSL
 @preconcurrency import OpenTelemetryApi
 import OpenTelemetryProtocolExporterCommon
 import OpenTelemetryProtocolExporterGrpc
+import PersistenceExporter
 import OpenTelemetrySdk
 import SwiftMetricsShim
 
@@ -29,7 +30,7 @@ import SignPostIntegration
 /// to instrument your code.
 ///
 /// ```swift
-/// try Signoz.start(serviceName: "my-app") {
+/// Signoz.start(serviceName: "my-app") {
 ///     $0.headers = ["signoz-ingestion-key": "..."]
 /// }
 /// defer { Signoz.shutdown() }
@@ -81,6 +82,10 @@ public enum Signoz {
     ///
     /// Configures the OpenTelemetry SDK with OTLP/gRPC exporters for traces,
     /// logs, and metrics, and enables auto-instrumentation as configured.
+    ///
+    /// If ``Configuration/localPersistencePath`` is set but persistence setup
+    /// fails, the SDK falls back to network-only export and logs a warning
+    /// to stderr. This ensures observability never crashes the host app.
     ///
     /// - Parameters:
     ///   - serviceName: The service name used for resource identification.
@@ -141,7 +146,21 @@ public enum Signoz {
         resource = Resource(attributes: attrs)
         #endif
 
-        // 3. OTLP configuration
+        // 3. Local persistence directory
+        var persistenceURL: URL? = config.localPersistencePath
+        if let url = persistenceURL {
+            do {
+                try FileManager.default.createDirectory(
+                    at: url,
+                    withIntermediateDirectories: true
+                )
+            } catch {
+                fputs("SignozSwift: failed to create persistence directory \(url.path): \(error). Falling back to network-only export.\n", stderr)
+                persistenceURL = nil
+            }
+        }
+
+        // 4. OTLP configuration
         let otlpHeaders: [(String, String)]? = config.headers.isEmpty
             ? nil
             : config.headers.map { ($0.key, $0.value) }
@@ -150,8 +169,18 @@ public enum Signoz {
             headers: otlpHeaders
         )
 
-        // 4. Trace exporter + processor
-        let traceExporter = OtlpTraceExporter(channel: channel, config: otlpConfig)
+        // 5. Trace exporter + processor
+        var traceExporter: any SpanExporter = OtlpTraceExporter(channel: channel, config: otlpConfig)
+        if let persistenceURL {
+            do {
+                traceExporter = try PersistenceSpanExporterDecorator(
+                    spanExporter: traceExporter,
+                    storageURL: persistenceURL.appendingPathComponent("traces")
+                )
+            } catch {
+                fputs("SignozSwift: failed to set up trace persistence: \(error). Using network-only export.\n", stderr)
+            }
+        }
 
         let spanProcessor: any SpanProcessor
         switch config.spanProcessing {
@@ -166,7 +195,7 @@ public enum Signoz {
             )
         }
 
-        // 5. TracerProvider
+        // 6. TracerProvider
         let tracerBuilder = TracerProviderBuilder()
             .with(resource: resource)
             .add(spanProcessor: spanProcessor)
@@ -180,8 +209,18 @@ public enum Signoz {
         let tracerProvider = tracerBuilder.build()
         OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
 
-        // 6. Log exporter + LoggerProvider
-        let logExporter = OtlpLogExporter(channel: channel, config: otlpConfig)
+        // 7. Log exporter + LoggerProvider
+        var logExporter: any LogRecordExporter = OtlpLogExporter(channel: channel, config: otlpConfig)
+        if let persistenceURL {
+            do {
+                logExporter = try PersistenceLogExporterDecorator(
+                    logRecordExporter: logExporter,
+                    storageURL: persistenceURL.appendingPathComponent("logs")
+                )
+            } catch {
+                fputs("SignozSwift: failed to set up log persistence: \(error). Using network-only export.\n", stderr)
+            }
+        }
         let logProcessor = SimpleLogRecordProcessor(logRecordExporter: logExporter)
         let loggerProvider = LoggerProviderBuilder()
             .with(processors: [logProcessor])
@@ -189,9 +228,19 @@ public enum Signoz {
             .build()
         OpenTelemetry.registerLoggerProvider(loggerProvider: loggerProvider)
 
-        // 7. Metrics shim (bridges swift-metrics → OTel → OTLP)
+        // 8. Metrics shim (bridges swift-metrics → OTel → OTLP)
         if config.autoInstrumentation.metricsShim {
-            let metricExporter = OtlpMetricExporter(channel: channel, config: otlpConfig)
+            var metricExporter: any MetricExporter = OtlpMetricExporter(channel: channel, config: otlpConfig)
+            if let persistenceURL {
+                do {
+                    metricExporter = try PersistenceMetricExporterDecorator(
+                        metricExporter: metricExporter,
+                        storageURL: persistenceURL.appendingPathComponent("metrics")
+                    )
+                } catch {
+                    fputs("SignozSwift: failed to set up metric persistence: \(error). Using network-only export.\n", stderr)
+                }
+            }
             let metricReader = PeriodicMetricReaderBuilder(exporter: metricExporter)
                 .setInterval(timeInterval: 60)
                 .build()
@@ -208,7 +257,7 @@ public enum Signoz {
             )
         }
 
-        // 8. URLSession auto-instrumentation (Apple platforms)
+        // 9. URLSession auto-instrumentation (Apple platforms)
         #if canImport(URLSessionInstrumentation)
         if config.autoInstrumentation.urlSession {
             _urlSessionInstrumentation = URLSessionInstrumentation(
@@ -217,7 +266,7 @@ public enum Signoz {
         }
         #endif
 
-        // 9. Store references
+        // 10. Store references
         lock.lock()
         _tracer = tracerProvider.get(
             instrumentationName: config.instrumentationName,
