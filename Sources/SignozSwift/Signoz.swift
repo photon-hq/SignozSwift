@@ -170,16 +170,24 @@ public enum Signoz {
         )
 
         // 5. Trace exporter + processor
-        var traceExporter: any SpanExporter = OtlpTraceExporter(channel: channel, config: otlpConfig)
+        let otlpTraceExporter: any SpanExporter = OtlpTraceExporter(channel: channel, config: otlpConfig)
+        let traceExporter: any SpanExporter
         if let persistenceURL {
             do {
-                traceExporter = try PersistenceSpanExporterDecorator(
-                    spanExporter: traceExporter,
+                // Fanout: OTLP exporter sends directly to network; file-only persistence exporter
+                // writes to disk independently for crash recovery. This ensures spans reach Signoz
+                // immediately (even in short-lived CLIs) while still persisting locally.
+                let fileOnlyExporter = try PersistenceSpanExporterDecorator(
+                    spanExporter: NoopSpanExporter(),
                     storageURL: persistenceURL.appendingPathComponent("traces")
                 )
+                traceExporter = MultiSpanExporter(spanExporters: [otlpTraceExporter, fileOnlyExporter])
             } catch {
                 fputs("SignozSwift: failed to set up trace persistence: \(error). Using network-only export.\n", stderr)
+                traceExporter = otlpTraceExporter
             }
+        } else {
+            traceExporter = otlpTraceExporter
         }
 
         let spanProcessor: any SpanProcessor
@@ -210,16 +218,21 @@ public enum Signoz {
         OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
 
         // 7. Log exporter + LoggerProvider
-        var logExporter: any LogRecordExporter = OtlpLogExporter(channel: channel, config: otlpConfig)
+        let otlpLogExporter: any LogRecordExporter = OtlpLogExporter(channel: channel, config: otlpConfig)
+        let logExporter: any LogRecordExporter
         if let persistenceURL {
             do {
-                logExporter = try PersistenceLogExporterDecorator(
-                    logRecordExporter: logExporter,
+                let fileOnlyExporter = try PersistenceLogExporterDecorator(
+                    logRecordExporter: NoopLogRecordExporter(),
                     storageURL: persistenceURL.appendingPathComponent("logs")
                 )
+                logExporter = MultiLogRecordExporter(logRecordExporters: [otlpLogExporter, fileOnlyExporter])
             } catch {
                 fputs("SignozSwift: failed to set up log persistence: \(error). Using network-only export.\n", stderr)
+                logExporter = otlpLogExporter
             }
+        } else {
+            logExporter = otlpLogExporter
         }
         let logProcessor = SimpleLogRecordProcessor(logRecordExporter: logExporter)
         let loggerProvider = LoggerProviderBuilder()
@@ -309,4 +322,24 @@ public enum Signoz {
         try? channel?.close().wait()
         try? group?.syncShutdownGracefully()
     }
+}
+
+// MARK: - Private noop exporters
+
+/// A span exporter that does nothing. Used as the wrapped exporter inside
+/// `PersistenceSpanExporterDecorator` so that the persistence layer only writes
+/// to disk — the actual network export is handled by the direct OTLP exporter
+/// in the `MultiSpanExporter` fanout.
+private class NoopSpanExporter: SpanExporter {
+    func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .success }
+    func flush(explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .success }
+    func shutdown(explicitTimeout: TimeInterval?) {}
+}
+
+/// A log record exporter that does nothing. Used as the wrapped exporter inside
+/// `PersistenceLogExporterDecorator` for the same reason as `NoopSpanExporter`.
+private struct NoopLogRecordExporter: LogRecordExporter {
+    func export(logRecords: [ReadableLogRecord], explicitTimeout: TimeInterval?) -> ExportResult { .success }
+    func forceFlush(explicitTimeout: TimeInterval?) -> ExportResult { .success }
+    func shutdown(explicitTimeout: TimeInterval?) {}
 }
