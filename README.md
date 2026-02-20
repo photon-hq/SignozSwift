@@ -217,7 +217,7 @@ let attrs: [String: AttributeValue] = [
 | `headers` | `[String: String]` | `[:]` | gRPC metadata headers |
 | `transportSecurity` | `.plaintext` \| `.tls` | `.plaintext` | Transport security mode |
 | `spanProcessing` | `.simple` \| `.batch(...)` | `.batch()` | Span processing strategy |
-| `localPersistencePath` | `URL?` | `nil` | Directory for on-disk telemetry queue. When set, traces/logs/metrics are persisted locally and forwarded when connectivity resumes. |
+| `localPersistencePath` | `URL?` | `nil` | Directory for on-disk telemetry backup. When set, spans and logs are exported to the network immediately **and** written to disk independently. Persisted data is retried by a background worker if the live export fails. |
 | `autoInstrumentation` | `AutoInstrumentation` | see below | Auto-instrumentation toggles |
 
 ### Auto-Instrumentation
