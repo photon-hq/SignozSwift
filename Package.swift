@@ -2,6 +2,35 @@
 
 import PackageDescription
 
+var signozDependencies: [Target.Dependency] = [
+    .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+    .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+    .product(name: "OpenTelemetryProtocolExporter", package: "opentelemetry-swift"),
+    .product(name: "SwiftMetricsShim", package: "opentelemetry-swift"),
+    .product(name: "PersistenceExporter", package: "opentelemetry-swift"),
+    .product(name: "GRPC", package: "grpc-swift"),
+]
+
+#if canImport(Darwin)
+signozDependencies.append(contentsOf: [
+    .product(
+        name: "URLSessionInstrumentation",
+        package: "opentelemetry-swift",
+        condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS])
+    ),
+    .product(
+        name: "ResourceExtension",
+        package: "opentelemetry-swift",
+        condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS])
+    ),
+    .product(
+        name: "SignPostIntegration",
+        package: "opentelemetry-swift",
+        condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS])
+    ),
+])
+#endif
+
 let package = Package(
     name: "SignozSwift",
     platforms: [.macOS(.v13), .iOS(.v16)],
@@ -28,29 +57,7 @@ let package = Package(
     targets: [
         .target(
             name: "SignozSwift",
-            dependencies: [
-                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-                .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-                .product(name: "OpenTelemetryProtocolExporter", package: "opentelemetry-swift"),
-                .product(name: "SwiftMetricsShim", package: "opentelemetry-swift"),
-                .product(
-                    name: "URLSessionInstrumentation",
-                    package: "opentelemetry-swift",
-                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS])
-                ),
-                .product(
-                    name: "ResourceExtension",
-                    package: "opentelemetry-swift",
-                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS])
-                ),
-                .product(
-                    name: "SignPostIntegration",
-                    package: "opentelemetry-swift",
-                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS])
-                ),
-                .product(name: "PersistenceExporter", package: "opentelemetry-swift"),
-                .product(name: "GRPC", package: "grpc-swift"),
-            ]
+            dependencies: signozDependencies
         ),
         .testTarget(
             name: "SignozSwiftTests",
