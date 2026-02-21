@@ -16,8 +16,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install and start OrbStack
         run: |
-          brew install orbstack
-          orb start
+          curl -fSL -o /tmp/OrbStack.dmg https://cdn-updates.orbstack.dev/amd64/OrbStack_v1.5.1_16857_amd64.dmg
+          hdiutil attach /tmp/OrbStack.dmg -nobrowse -mountpoint /Volumes/OrbStack
+          cp -R "/Volumes/OrbStack/OrbStack.app" /Applications/
+          hdiutil detach /Volumes/OrbStack
+          open -a OrbStack
+          while ! docker info >/dev/null 2>&1; do sleep 2; done
       - name: Start OTel Collector
         run: |
           docker run -d --name otel-collector \

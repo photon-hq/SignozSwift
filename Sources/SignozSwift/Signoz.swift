@@ -13,7 +13,7 @@ import SwiftMetricsShim
 #if canImport(Darwin)
 nonisolated(unsafe) private let stdErr = stderr
 #else
-nonisolated(unsafe) private let stdErr = stderr!
+nonisolated(unsafe) private let stdErr = fdopen(STDERR_FILENO, "w")!
 #endif
 
 #if canImport(ResourceExtension)
