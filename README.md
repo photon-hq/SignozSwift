@@ -276,7 +276,7 @@ docker stop otel-collector
 ## Requirements
 
 - Swift 6.2+
-- macOS 13+ / iOS 16+
+- macOS 13+ / iOS 16+ / Linux
 
 ## License
 

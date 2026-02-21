@@ -10,6 +10,13 @@ import PersistenceExporter
 import OpenTelemetrySdk
 import SwiftMetricsShim
 
+#if canImport(Darwin)
+nonisolated(unsafe) private let stdErr = stderr
+#elseif canImport(Glibc)
+import Glibc
+nonisolated(unsafe) private let stdErr = fdopen(STDERR_FILENO, "w")!
+#endif
+
 #if canImport(ResourceExtension)
 import ResourceExtension
 #endif
@@ -155,7 +162,7 @@ public enum Signoz {
                     withIntermediateDirectories: true
                 )
             } catch {
-                fputs("SignozSwift: failed to create persistence directory \(url.path): \(error). Falling back to network-only export.\n", stderr)
+                fputs("SignozSwift: failed to create persistence directory \(url.path): \(error). Falling back to network-only export.\n", stdErr)
                 persistenceURL = nil
             }
         }
@@ -183,7 +190,7 @@ public enum Signoz {
                 )
                 traceExporter = MultiSpanExporter(spanExporters: [otlpTraceExporter, fileOnlyExporter])
             } catch {
-                fputs("SignozSwift: failed to set up trace persistence: \(error). Using network-only export.\n", stderr)
+                fputs("SignozSwift: failed to set up trace persistence: \(error). Using network-only export.\n", stdErr)
                 traceExporter = otlpTraceExporter
             }
         } else {
@@ -228,7 +235,7 @@ public enum Signoz {
                 )
                 logExporter = MultiLogRecordExporter(logRecordExporters: [otlpLogExporter, fileOnlyExporter])
             } catch {
-                fputs("SignozSwift: failed to set up log persistence: \(error). Using network-only export.\n", stderr)
+                fputs("SignozSwift: failed to set up log persistence: \(error). Using network-only export.\n", stdErr)
                 logExporter = otlpLogExporter
             }
         } else {
@@ -251,7 +258,7 @@ public enum Signoz {
                         storageURL: persistenceURL.appendingPathComponent("metrics")
                     )
                 } catch {
-                    fputs("SignozSwift: failed to set up metric persistence: \(error). Using network-only export.\n", stderr)
+                    fputs("SignozSwift: failed to set up metric persistence: \(error). Using network-only export.\n", stdErr)
                 }
             }
             let metricReader = PeriodicMetricReaderBuilder(exporter: metricExporter)

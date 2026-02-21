@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  macOS:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.2'
+      - uses: docker/setup-docker-action@v4
+      - name: Start OTel Collector
+        run: |
+          docker run -d --name otel-collector \
+            -p 4317:4317 \
+            -v ${{ github.workspace }}/otel-collector-config.yaml:/etc/otelcol/config.yaml \
+            otel/opentelemetry-collector:latest
+      - name: Build and test
+        run: swift test
+      - name: Stop OTel Collector
+        if: always()
+        run: docker rm -f otel-collector
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.2'
+      - name: Start OTel Collector
+        run: |
+          docker run -d --name otel-collector \
+            -p 4317:4317 \
+            -v ${{ github.workspace }}/otel-collector-config.yaml:/etc/otelcol/config.yaml \
+            otel/opentelemetry-collector:latest
+      - name: Build and test
+        run: swift test
+      - name: Stop OTel Collector
+        if: always()
+        run: docker rm -f otel-collector
