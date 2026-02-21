@@ -14,17 +14,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Start OTel Collector
-        run: |
-          docker run -d --name otel-collector \
-            -p 4317:4317 \
-            -v ${{ github.workspace }}/otel-collector-config.yaml:/etc/otelcol/config.yaml \
-            otel/opentelemetry-collector:latest
       - name: Build and test
         run: swift test
-      - name: Stop OTel Collector
-        if: always()
-        run: docker rm -f otel-collector
 
   linux:
     runs-on: ubuntu-latest
