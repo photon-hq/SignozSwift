@@ -17,12 +17,7 @@ jobs:
       - name: Install and start OrbStack
         run: |
           brew install orbstack
-          open -a OrbStack
-          # Wait for OrbStack to finish initializing and docker CLI to become available
-          for i in $(seq 1 30); do
-            if docker info &>/dev/null; then break; fi
-            sleep 2
-          done
+          orb start
       - name: Start OTel Collector
         run: |
           docker run -d --name otel-collector \
