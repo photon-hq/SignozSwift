@@ -11,10 +11,12 @@ import OpenTelemetrySdk
 import SwiftMetricsShim
 
 #if canImport(Darwin)
-nonisolated(unsafe) private let stdErr = stderr
-#else
-nonisolated(unsafe) private let stdErr = fdopen(STDERR_FILENO, "w")!
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
 #endif
+
+nonisolated(unsafe) private let stdErr = stderr
 
 #if canImport(ResourceExtension)
 import ResourceExtension
