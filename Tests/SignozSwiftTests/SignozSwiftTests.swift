@@ -280,6 +280,39 @@ struct TracerWithSpanTests {
     }
 }
 
+// MARK: - gRPC Timeout Conversion Tests
+
+@Suite("gRPC Timeout Conversion")
+struct GrpcTimeoutConversionTests {
+
+    @Test("Preserves sub-second timeouts")
+    func preservesSubSecondTimeouts() {
+        let duration = GrpcTimeout.duration(from: 0.5)
+        let (seconds, attoseconds) = duration.components
+
+        #expect(seconds == 0)
+        #expect(attoseconds == 500_000_000_000_000_000)
+    }
+
+    @Test("Rounds tiny positive timeouts up to one nanosecond")
+    func roundsTinyPositiveTimeoutsUp() {
+        let duration = GrpcTimeout.duration(from: 0.000_000_000_1)
+        let (seconds, attoseconds) = duration.components
+
+        #expect(seconds == 0)
+        #expect(attoseconds == 1_000_000_000)
+    }
+
+    @Test("Treats NaN timeouts as immediate failure")
+    func treatsNaNTimeoutsAsImmediateFailure() {
+        let duration = GrpcTimeout.duration(from: .nan)
+        let (seconds, attoseconds) = duration.components
+
+        #expect(seconds == 0)
+        #expect(attoseconds == 0)
+    }
+}
+
 // MARK: - Logger Convenience Tests
 
 @Suite("Logger Convenience")

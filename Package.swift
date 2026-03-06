@@ -6,10 +6,12 @@ let signozDependencies: [Target.Dependency] = {
     var deps: [Target.Dependency] = [
         .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
         .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-        .product(name: "OpenTelemetryProtocolExporter", package: "opentelemetry-swift"),
+        .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
         .product(name: "SwiftMetricsShim", package: "opentelemetry-swift"),
         .product(name: "PersistenceExporter", package: "opentelemetry-swift"),
-        .product(name: "GRPC", package: "grpc-swift"),
+        .product(name: "GRPCCore", package: "grpc-swift"),
+        .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
+        .product(name: "SwiftProtobuf", package: "swift-protobuf"),
     ]
 
     #if canImport(Darwin)
@@ -25,7 +27,7 @@ let signozDependencies: [Target.Dependency] = {
 
 let package = Package(
     name: "SignozSwift",
-    platforms: [.macOS(.v13), .iOS(.v16)],
+    platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
         .library(
             name: "SignozSwift",
@@ -38,12 +40,20 @@ let package = Package(
             exact: "2.3.0"
         ),
         .package(
-            url: "https://github.com/open-telemetry/opentelemetry-swift",
-            exact: "2.3.0"
+            url: "https://github.com/photon-hq/opentelemetry-swift",
+            exact: "3.0.0"
         ),
         .package(
             url: "https://github.com/grpc/grpc-swift.git",
-            exact: "1.27.0"
+            exact: "2.2.2"
+        ),
+        .package(
+            url: "https://github.com/grpc/grpc-swift-nio-transport.git",
+            exact: "1.1.0"
+        ),
+        .package(
+            url: "https://github.com/apple/swift-protobuf.git",
+            from: "1.28.1"
         ),
     ],
     targets: [
@@ -55,6 +65,8 @@ let package = Package(
             name: "SignozSwiftTests",
             dependencies: [
                 "SignozSwift",
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+                .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
                 .product(name: "InMemoryExporter", package: "opentelemetry-swift"),
             ]
         ),

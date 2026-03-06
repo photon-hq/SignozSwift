@@ -1,11 +1,9 @@
 import CoreMetrics
 import Foundation
-import GRPC
-import NIO
-import NIOSSL
+import GRPCCore
+import GRPCNIOTransportHTTP2
 @preconcurrency import OpenTelemetryApi
 import OpenTelemetryProtocolExporterCommon
-import OpenTelemetryProtocolExporterGrpc
 import PersistenceExporter
 import OpenTelemetrySdk
 import SwiftMetricsShim
@@ -49,8 +47,9 @@ public enum Signoz {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var _tracer: (any Tracer)?
     nonisolated(unsafe) private static var _logger: (any Logger)?
-    nonisolated(unsafe) private static var _channel: ClientConnection?
-    nonisolated(unsafe) private static var _group: MultiThreadedEventLoopGroup?
+    nonisolated(unsafe) private static var _client: (any GrpcExportClient)?
+    nonisolated(unsafe) private static var _clientShutdown: (@Sendable () -> Void)?
+    nonisolated(unsafe) private static var _clientTask: Task<Void, Never>?
     nonisolated(unsafe) private static var _tracerProvider: TracerProviderSdk?
     nonisolated(unsafe) private static var _logProcessor: (any LogRecordProcessor)?
 
@@ -106,18 +105,33 @@ public enum Signoz {
 
         let (host, port) = config.parseEndpoint()
 
-        // 1. gRPC channel
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        let channel: ClientConnection
-        switch config.transportSecurity {
-        case .tls:
-            channel = ClientConnection
-                .usingTLSBackedByNIOSSL(on: group)
-                .connect(host: host, port: port)
-        case .plaintext:
-            channel = ClientConnection
-                .insecure(group: group)
-                .connect(host: host, port: port)
+        // 1. gRPC client (v2)
+        let client: any GrpcExportClient
+        let clientShutdown: @Sendable () -> Void
+        let clientTask: Task<Void, Never>
+        do {
+            let transportSecurity: HTTP2ClientTransport.Posix.TransportSecurity =
+                config.transportSecurity == .tls ? .tls(.defaults) : .plaintext
+            let transport = try HTTP2ClientTransport.Posix(
+                target: .dns(host: host, port: port),
+                transportSecurity: transportSecurity
+            )
+            let grpcClient = GRPCClient(transport: transport)
+            clientTask = Task {
+                do {
+                    try await grpcClient.runConnections()
+                } catch is CancellationError {
+                    // Shutdown cancels the background connection loop after requesting a graceful drain.
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    fputs("SignozSwift: gRPC client connection loop stopped: \(error).\n", stdErr)
+                }
+            }
+            clientShutdown = { grpcClient.beginGracefulShutdown() }
+            client = grpcClient
+        } catch {
+            fputs("SignozSwift: failed to create gRPC transport: \(error).\n", stdErr)
+            return
         }
 
         // 2. Resource
@@ -168,16 +182,12 @@ public enum Signoz {
         }
 
         // 4. OTLP configuration
-        let otlpHeaders: [(String, String)]? = config.headers.isEmpty
-            ? nil
-            : config.headers.map { ($0.key, $0.value) }
-        let otlpConfig = OtlpConfiguration(
-            timeout: TimeInterval(30),
-            headers: otlpHeaders
-        )
+        let otlpHeaders: [(String, String)] = config.headers.map { ($0.key, $0.value) }
+        let otlpTimeout: TimeInterval = 30
 
         // 5. Trace exporter + processor
-        let otlpTraceExporter: any SpanExporter = OtlpTraceExporter(channel: channel, config: otlpConfig)
+        let otlpTraceExporter: any SpanExporter = GrpcTraceExporter(
+            client: client, headers: otlpHeaders, timeout: otlpTimeout)
         let traceExporter: any SpanExporter
         if let persistenceURL {
             do {
@@ -225,7 +235,8 @@ public enum Signoz {
         OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
 
         // 7. Log exporter + LoggerProvider
-        let otlpLogExporter: any LogRecordExporter = OtlpLogExporter(channel: channel, config: otlpConfig)
+        let otlpLogExporter: any LogRecordExporter = GrpcLogExporter(
+            client: client, headers: otlpHeaders, timeout: otlpTimeout)
         let logExporter: any LogRecordExporter
         if let persistenceURL {
             do {
@@ -250,7 +261,8 @@ public enum Signoz {
 
         // 8. Metrics shim (bridges swift-metrics → OTel → OTLP)
         if config.autoInstrumentation.metricsShim {
-            var metricExporter: any MetricExporter = OtlpMetricExporter(channel: channel, config: otlpConfig)
+            var metricExporter: any MetricExporter = GrpcMetricExporter(
+                client: client, headers: otlpHeaders, timeout: otlpTimeout)
             if let persistenceURL {
                 do {
                     metricExporter = try PersistenceMetricExporterDecorator(
@@ -295,8 +307,9 @@ public enum Signoz {
         _logger = loggerProvider
             .loggerBuilder(instrumentationScopeName: config.instrumentationName)
             .build()
-        _channel = channel
-        _group = group
+        _client = client
+        _clientShutdown = clientShutdown
+        _clientTask = clientTask
         _tracerProvider = tracerProvider
         _logProcessor = logProcessor
         lock.unlock()
@@ -308,14 +321,15 @@ public enum Signoz {
     /// and metrics are exported.
     public static func shutdown() {
         lock.lock()
-        let channel = _channel
-        let group = _group
+        let clientShutdown = _clientShutdown
+        let clientTask = _clientTask
         let tracerProvider = _tracerProvider
         let logProcessor = _logProcessor
         _tracer = nil
         _logger = nil
-        _channel = nil
-        _group = nil
+        _client = nil
+        _clientShutdown = nil
+        _clientTask = nil
         _tracerProvider = nil
         _logProcessor = nil
         lock.unlock()
@@ -326,8 +340,21 @@ public enum Signoz {
         _ = logProcessor?.forceFlush(explicitTimeout: 10)
         _ = logProcessor?.shutdown()
 
-        try? channel?.close().wait()
-        try? group?.syncShutdownGracefully()
+        clientShutdown?()
+        if let clientTask {
+            let semaphore = DispatchSemaphore(value: 0)
+            let drainTask = Task.detached {
+                await clientTask.value
+                semaphore.signal()
+            }
+
+            let didDrain = semaphore.wait(timeout: .now() + .seconds(10)) == .success
+            if !didDrain {
+                clientTask.cancel()
+            }
+
+            drainTask.cancel()
+        }
     }
 }
 

@@ -242,8 +242,8 @@ let attrs: [String: AttributeValue] = [
 SignozSwift wraps the official OpenTelemetry Swift SDK — it does not reinvent any OTel types.
 
 - **[opentelemetry-swift-core](https://github.com/open-telemetry/opentelemetry-swift-core) 2.3.0** — `OpenTelemetryApi`, `OpenTelemetrySdk`
-- **[opentelemetry-swift](https://github.com/open-telemetry/opentelemetry-swift) 2.3.0** — OTLP/gRPC exporters, URLSession instrumentation, ResourceExtension, SignPost integration, SwiftMetricsShim
-- **[grpc-swift](https://github.com/grpc/grpc-swift) 1.27.0** — gRPC transport
+- **[opentelemetry-swift](https://github.com/open-telemetry/opentelemetry-swift)** — OTLP proto adapters, URLSession instrumentation, ResourceExtension, SignPost integration, SwiftMetricsShim
+- **[grpc-swift](https://github.com/grpc/grpc-swift) 2.2.2** — gRPC transport (v2, async/await)
 
 All OTel types (`Span`, `Tracer`, `Logger`, `AttributeValue`, `SpanKind`, etc.) are re-exported via `@_exported import OpenTelemetryApi`, so you only need `import SignozSwift`.
 
@@ -276,7 +276,7 @@ docker stop otel-collector
 ## Requirements
 
 - Swift 6.2+
-- macOS 13+ / iOS 16+ / Linux
+- macOS 15+ / iOS 18+ / Linux
 
 ## License
 
