@@ -49,7 +49,7 @@ public enum Signoz {
     nonisolated(unsafe) private static var _logger: (any Logger)?
     nonisolated(unsafe) private static var _client: (any GrpcExportClient)?
     nonisolated(unsafe) private static var _clientShutdown: (@Sendable () -> Void)?
-    nonisolated(unsafe) private static var _clientTask: Task<Void, any Error>?
+    nonisolated(unsafe) private static var _clientTask: Task<Void, Never>?
     nonisolated(unsafe) private static var _tracerProvider: TracerProviderSdk?
     nonisolated(unsafe) private static var _logProcessor: (any LogRecordProcessor)?
 
@@ -108,7 +108,7 @@ public enum Signoz {
         // 1. gRPC client (v2)
         let client: any GrpcExportClient
         let clientShutdown: @Sendable () -> Void
-        let clientTask: Task<Void, any Error>
+        let clientTask: Task<Void, Never>
         do {
             let transportSecurity: HTTP2ClientTransport.Posix.TransportSecurity =
                 config.transportSecurity == .tls ? .tls(.defaults) : .plaintext
@@ -117,7 +117,16 @@ public enum Signoz {
                 transportSecurity: transportSecurity
             )
             let grpcClient = GRPCClient(transport: transport)
-            clientTask = Task { try await grpcClient.runConnections() }
+            clientTask = Task {
+                do {
+                    try await grpcClient.runConnections()
+                } catch is CancellationError {
+                    // Shutdown cancels the background connection loop after requesting a graceful drain.
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    fputs("SignozSwift: gRPC client connection loop stopped: \(error).\n", stdErr)
+                }
+            }
             clientShutdown = { grpcClient.beginGracefulShutdown() }
             client = grpcClient
         } catch {
