@@ -1,5 +1,5 @@
 {
-  "originHash" : "6a962b668f1b783a22471bd0554e63bd6b36b43af8e7e9d269586079e51e8c93",
+  "originHash" : "3747abee5997310a99f4bd541d57869da3184efbbedc5793985550507f47ddd4",
   "pins" : [
     {
       "identity" : "grpc-swift",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/photon-hq/opentelemetry-swift",
       "state" : {
-        "branch" : "no-grpc-v1",
-        "revision" : "fcebdec4d67061fcb6b4dc71bbfd3e1377b52fa7"
+        "revision" : "411089534ba5a2145fd0069d375c61f95ade9426",
+        "version" : "3.0.0"
       }
     },
     {

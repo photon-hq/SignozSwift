@@ -41,7 +41,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/photon-hq/opentelemetry-swift",
-            branch: "no-grpc-v1"
+            exact: "3.0.0"
         ),
         .package(
             url: "https://github.com/grpc/grpc-swift.git",
