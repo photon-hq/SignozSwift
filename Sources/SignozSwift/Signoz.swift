@@ -341,7 +341,20 @@ public enum Signoz {
         _ = logProcessor?.shutdown()
 
         clientShutdown?()
-        clientTask?.cancel()
+        if let clientTask {
+            let semaphore = DispatchSemaphore(value: 0)
+            let drainTask = Task.detached {
+                await clientTask.value
+                semaphore.signal()
+            }
+
+            let didDrain = semaphore.wait(timeout: .now() + .seconds(10)) == .success
+            if !didDrain {
+                clientTask.cancel()
+            }
+
+            drainTask.cancel()
+        }
     }
 }
 
