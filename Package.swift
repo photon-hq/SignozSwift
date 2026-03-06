@@ -45,11 +45,11 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/grpc/grpc-swift.git",
-            from: "2.2.0"
+            exact: "2.2.2"
         ),
         .package(
             url: "https://github.com/grpc/grpc-swift-nio-transport.git",
-            from: "1.0.0"
+            exact: "1.1.0"
         ),
         .package(
             url: "https://github.com/apple/swift-protobuf.git",
@@ -65,6 +65,8 @@ let package = Package(
             name: "SignozSwiftTests",
             dependencies: [
                 "SignozSwift",
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+                .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
                 .product(name: "InMemoryExporter", package: "opentelemetry-swift"),
             ]
         ),
