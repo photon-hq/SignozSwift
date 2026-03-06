@@ -46,6 +46,10 @@ public struct Configuration: Sendable {
     /// Auto-instrumentation toggles.
     public var autoInstrumentation: AutoInstrumentation = .init()
 
+    /// Whether log messages are also printed to stderr with color.
+    /// Default: `.auto` (enabled in debug builds, disabled in release).
+    public var consoleLog: ConsoleLog = .auto
+
     /// Optional local directory path for persisting telemetry data.
     ///
     /// When set, traces, logs, and metrics are written to disk in addition
@@ -87,6 +91,16 @@ public struct Configuration: Sendable {
             scheduledDelay: TimeInterval = 5.0,
             maxExportBatchSize: Int = 512
         )
+    }
+
+    /// Controls whether log messages are also printed to the local console (stderr) with color.
+    /// - `.auto` — enabled in DEBUG builds, disabled in RELEASE builds (default).
+    /// - `.enabled` — always print to console.
+    /// - `.disabled` — never print to console.
+    public enum ConsoleLog: Sendable {
+        case auto
+        case enabled
+        case disabled
     }
 
     public struct AutoInstrumentation: Sendable {

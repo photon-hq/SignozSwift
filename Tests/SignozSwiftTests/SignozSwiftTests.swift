@@ -76,6 +76,29 @@ struct ConfigurationTests {
         #expect(ai.signpostIntegration == false)
         #expect(ai.metricsShim == true)
     }
+
+    @Test("Console log defaults to auto")
+    func consoleLogDefault() {
+        let config = Configuration(serviceName: "test")
+        if case .auto = config.consoleLog {
+            // pass
+        } else {
+            Issue.record("Expected default .auto")
+        }
+    }
+
+    @Test("Console log can be overridden")
+    func consoleLogOverride() {
+        var config = Configuration(serviceName: "test")
+        config.consoleLog = .enabled
+        if case .enabled = config.consoleLog {} else {
+            Issue.record("Expected .enabled")
+        }
+        config.consoleLog = .disabled
+        if case .disabled = config.consoleLog {} else {
+            Issue.record("Expected .disabled")
+        }
+    }
 }
 
 // MARK: - Endpoint Parsing Tests

@@ -1,4 +1,13 @@
+import Foundation
 import OpenTelemetryApi
+import Rainbow
+
+#if canImport(Darwin)
+nonisolated(unsafe) private let consoleStdErr = stderr
+#elseif canImport(Glibc)
+import Glibc
+nonisolated(unsafe) private let consoleStdErr = fdopen(STDERR_FILENO, "w")!
+#endif
 
 // MARK: - Top-Level Tracing
 
@@ -72,30 +81,43 @@ public func span<T>(
 
 /// Emit a TRACE-level log record.
 public func trace(_ body: String, attributes: [String: AttributeValue] = [:]) {
+    consolePrint(body, level: "TRACE", color: { $0.lightBlack })
     Signoz.logger.trace(body, attributes: attributes)
 }
 
 /// Emit a DEBUG-level log record.
 public func debug(_ body: String, attributes: [String: AttributeValue] = [:]) {
+    consolePrint(body, level: "DEBUG", color: { $0.cyan })
     Signoz.logger.debug(body, attributes: attributes)
 }
 
 /// Emit an INFO-level log record.
 public func info(_ body: String, attributes: [String: AttributeValue] = [:]) {
+    consolePrint(body, level: "INFO", color: { $0 })
     Signoz.logger.info(body, attributes: attributes)
 }
 
 /// Emit a WARN-level log record.
 public func warn(_ body: String, attributes: [String: AttributeValue] = [:]) {
+    consolePrint(body, level: "WARN", color: { $0.yellow })
     Signoz.logger.warn(body, attributes: attributes)
 }
 
 /// Emit an ERROR-level log record.
 public func error(_ body: String, attributes: [String: AttributeValue] = [:]) {
+    consolePrint(body, level: "ERROR", color: { $0.red })
     Signoz.logger.error(body, attributes: attributes)
 }
 
 /// Emit a FATAL-level log record.
 public func fatal(_ body: String, attributes: [String: AttributeValue] = [:]) {
+    consolePrint(body, level: "FATAL", color: { $0.red.bold })
     Signoz.logger.fatal(body, attributes: attributes)
+}
+
+// MARK: - Console Output
+
+private func consolePrint(_ message: String, level: String, color: (String) -> String) {
+    guard Signoz.consoleLogEnabled else { return }
+    fputs(color("[\(level)] \(message)") + "\n", consoleStdErr)
 }
