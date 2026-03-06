@@ -41,7 +41,7 @@ final class GrpcMetricExporter: MetricExporter {
 
         let opts = {
             var o = CallOptions.defaults
-            o.timeout = .seconds(Int64(defaultTimeout))
+            o.timeout = GrpcTimeout.duration(from: defaultTimeout)
             return o
         }()
 

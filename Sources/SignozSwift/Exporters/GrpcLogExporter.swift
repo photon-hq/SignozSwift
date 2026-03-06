@@ -32,7 +32,7 @@ final class GrpcLogExporter: LogRecordExporter {
         let timeout = explicitTimeout ?? defaultTimeout
         let opts = {
             var o = CallOptions.defaults
-            o.timeout = .seconds(Int64(timeout))
+            o.timeout = GrpcTimeout.duration(from: timeout)
             return o
         }()
 
