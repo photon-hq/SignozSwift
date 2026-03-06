@@ -36,25 +36,16 @@ final class GrpcTraceExporter: SpanExporter {
             return o
         }()
 
-        let semaphore = DispatchSemaphore(value: 0)
-        nonisolated(unsafe) var result: SpanExporterResultCode = .failure
         let client = self.client
         let md = self.metadata
 
-        Task { @Sendable in
-            defer { semaphore.signal() }
-            do {
-                let _: Opentelemetry_Proto_Collector_Trace_V1_ExportTraceServiceResponse =
-                    try await client.callUnary(
-                        request, descriptor: GrpcTraceExporter.descriptor, metadata: md, options: opts)
-                result = .success
-            } catch {
-                result = .failure
-            }
+        let didSucceed = GrpcExportExecutor.run(timeout: timeout) {
+            let _: Opentelemetry_Proto_Collector_Trace_V1_ExportTraceServiceResponse =
+                try await client.callUnary(
+                    request, descriptor: GrpcTraceExporter.descriptor, metadata: md, options: opts)
         }
 
-        semaphore.wait()
-        return result
+        return didSucceed ? .success : .failure
     }
 
     func flush(explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .success }

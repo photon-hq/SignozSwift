@@ -45,25 +45,17 @@ final class GrpcMetricExporter: MetricExporter {
             return o
         }()
 
-        let semaphore = DispatchSemaphore(value: 0)
-        nonisolated(unsafe) var result: ExportResult = .failure
+        let timeout = defaultTimeout
         let client = self.client
         let md = self.metadata
 
-        Task { @Sendable in
-            defer { semaphore.signal() }
-            do {
-                let _: Opentelemetry_Proto_Collector_Metrics_V1_ExportMetricsServiceResponse =
-                    try await client.callUnary(
-                        request, descriptor: GrpcMetricExporter.descriptor, metadata: md, options: opts)
-                result = .success
-            } catch {
-                result = .failure
-            }
+        let didSucceed = GrpcExportExecutor.run(timeout: timeout) {
+            let _: Opentelemetry_Proto_Collector_Metrics_V1_ExportMetricsServiceResponse =
+                try await client.callUnary(
+                    request, descriptor: GrpcMetricExporter.descriptor, metadata: md, options: opts)
         }
 
-        semaphore.wait()
-        return result
+        return didSucceed ? .success : .failure
     }
 
     func flush() -> ExportResult { .success }

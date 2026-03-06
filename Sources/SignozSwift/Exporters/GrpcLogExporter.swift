@@ -36,25 +36,16 @@ final class GrpcLogExporter: LogRecordExporter {
             return o
         }()
 
-        let semaphore = DispatchSemaphore(value: 0)
-        nonisolated(unsafe) var result: ExportResult = .failure
         let client = self.client
         let md = self.metadata
 
-        Task { @Sendable in
-            defer { semaphore.signal() }
-            do {
-                let _: Opentelemetry_Proto_Collector_Logs_V1_ExportLogsServiceResponse =
-                    try await client.callUnary(
-                        request, descriptor: GrpcLogExporter.descriptor, metadata: md, options: opts)
-                result = .success
-            } catch {
-                result = .failure
-            }
+        let didSucceed = GrpcExportExecutor.run(timeout: timeout) {
+            let _: Opentelemetry_Proto_Collector_Logs_V1_ExportLogsServiceResponse =
+                try await client.callUnary(
+                    request, descriptor: GrpcLogExporter.descriptor, metadata: md, options: opts)
         }
 
-        semaphore.wait()
-        return result
+        return didSucceed ? .success : .failure
     }
 
     func forceFlush(explicitTimeout: TimeInterval?) -> ExportResult { .success }
