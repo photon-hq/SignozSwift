@@ -2,6 +2,10 @@ import Foundation
 
 enum GrpcTimeout {
     static func duration(from timeout: TimeInterval) -> Duration {
+        guard !timeout.isNaN else {
+            return .nanoseconds(0)
+        }
+
         guard timeout.isFinite else {
             return timeout.sign == .minus ? .nanoseconds(0) : .seconds(Int64.max)
         }
@@ -21,6 +25,10 @@ enum GrpcTimeout {
     }
 
     static func deadline(from timeout: TimeInterval) -> DispatchTime {
+        guard !timeout.isNaN else {
+            return .now()
+        }
+
         guard timeout.isFinite else {
             return timeout.sign == .minus ? .now() : .distantFuture
         }

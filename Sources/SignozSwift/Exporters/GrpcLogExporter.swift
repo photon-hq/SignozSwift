@@ -17,11 +17,7 @@ final class GrpcLogExporter: LogRecordExporter {
     init(client: any GrpcExportClient, headers: [(String, String)], timeout: TimeInterval = 30) {
         self.client = client
         self.defaultTimeout = timeout
-        var md = Metadata()
-        for (key, value) in headers {
-            md.addString(value, forKey: key)
-        }
-        self.metadata = md
+        self.metadata = Metadata(headers: headers)
     }
 
     func export(logRecords: [ReadableLogRecord], explicitTimeout: TimeInterval?) -> ExportResult {

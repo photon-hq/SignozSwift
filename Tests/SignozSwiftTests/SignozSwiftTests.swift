@@ -302,6 +302,15 @@ struct GrpcTimeoutConversionTests {
         #expect(seconds == 0)
         #expect(attoseconds == 1_000_000_000)
     }
+
+    @Test("Treats NaN timeouts as immediate failure")
+    func treatsNaNTimeoutsAsImmediateFailure() {
+        let duration = GrpcTimeout.duration(from: .nan)
+        let (seconds, attoseconds) = duration.components
+
+        #expect(seconds == 0)
+        #expect(attoseconds == 0)
+    }
 }
 
 // MARK: - Logger Convenience Tests

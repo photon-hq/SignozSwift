@@ -27,11 +27,7 @@ final class GrpcMetricExporter: MetricExporter {
         self.defaultTimeout = timeout
         self.temporalitySelector = temporalitySelector
         self.aggregationSelector = aggregationSelector
-        var md = Metadata()
-        for (key, value) in headers {
-            md.addString(value, forKey: key)
-        }
-        self.metadata = md
+        self.metadata = Metadata(headers: headers)
     }
 
     func export(metrics: [MetricData]) -> ExportResult {
