@@ -53,6 +53,8 @@ public enum Signoz {
     nonisolated(unsafe) private static var _tracerProvider: TracerProviderSdk?
     nonisolated(unsafe) private static var _logProcessor: (any LogRecordProcessor)?
 
+    nonisolated(unsafe) private static var _consoleLogEnabled: Bool = false
+
     #if canImport(URLSessionInstrumentation)
     nonisolated(unsafe) private static var _urlSessionInstrumentation: URLSessionInstrumentation?
     #endif
@@ -75,6 +77,13 @@ public enum Signoz {
         lock.lock()
         defer { lock.unlock() }
         return _tracer ?? noopTracer
+    }
+
+    /// Whether log messages should also print to the local console.
+    static var consoleLogEnabled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _consoleLogEnabled
     }
 
     /// The configured OTel logger. Falls back to a no-op logger if ``start(serviceName:_:)`` hasn't been called.
@@ -312,6 +321,18 @@ public enum Signoz {
         _clientTask = clientTask
         _tracerProvider = tracerProvider
         _logProcessor = logProcessor
+        switch config.consoleLog {
+        case .auto:
+            #if DEBUG
+            _consoleLogEnabled = true
+            #else
+            _consoleLogEnabled = false
+            #endif
+        case .enabled:
+            _consoleLogEnabled = true
+        case .disabled:
+            _consoleLogEnabled = false
+        }
         lock.unlock()
     }
 
@@ -332,6 +353,7 @@ public enum Signoz {
         _clientTask = nil
         _tracerProvider = nil
         _logProcessor = nil
+        _consoleLogEnabled = false
         lock.unlock()
 
         // Flush and shut down providers

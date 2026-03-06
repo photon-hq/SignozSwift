@@ -142,6 +142,7 @@ Signoz.start(serviceName: "my-app") { config in
     config.headers = ["signoz-ingestion-key": "..."]
     config.resourceAttributes = ["custom.attr": "value"]
     config.localPersistencePath = URL(filePath: "/tmp/signoz")  // optional on-disk queue
+    config.consoleLog = .enabled                              // colored stderr output
 }
 
 // Shutdown — flush and clean up
@@ -191,6 +192,21 @@ fatal("Unrecoverable error")
 Signoz.logger.log("Custom", severity: .info, attributes: ["key": "value"])
 ```
 
+### Console Output
+
+By default (`.auto`), log calls also print colored output to stderr in DEBUG builds — useful during development without extra setup. In RELEASE builds, console output is automatically disabled to avoid noise.
+
+```swift
+Signoz.start(serviceName: "my-app") {
+    $0.consoleLog = .enabled   // always print to stderr
+    // $0.consoleLog = .disabled  // never print to stderr
+    // $0.consoleLog = .auto      // DEBUG only (default)
+}
+
+info("Server started", attributes: ["port": 8080])
+// stderr: [INFO] Server started {"port": 8080}
+```
+
 ### Attribute Literals
 
 `AttributeValue` conforms to `ExpressibleByStringLiteral`, `ExpressibleByIntegerLiteral`, `ExpressibleByFloatLiteral`, and `ExpressibleByBooleanLiteral`, so you can write:
@@ -218,6 +234,7 @@ let attrs: [String: AttributeValue] = [
 | `transportSecurity` | `.plaintext` \| `.tls` | `.plaintext` | Transport security mode |
 | `spanProcessing` | `.simple` \| `.batch(...)` | `.batch()` | Span processing strategy |
 | `localPersistencePath` | `URL?` | `nil` | Directory for on-disk telemetry backup. When set, spans and logs are exported to the network immediately **and** written to disk independently. Persisted data is retried by a background worker if the live export fails. |
+| `consoleLog` | `.auto` \| `.enabled` \| `.disabled` | `.auto` | Colored console output to stderr. `.auto` enables in DEBUG builds only, `.enabled` always prints, `.disabled` never prints. |
 | `autoInstrumentation` | `AutoInstrumentation` | see below | Auto-instrumentation toggles |
 
 ### Auto-Instrumentation
@@ -242,8 +259,9 @@ let attrs: [String: AttributeValue] = [
 SignozSwift wraps the official OpenTelemetry Swift SDK — it does not reinvent any OTel types.
 
 - **[opentelemetry-swift-core](https://github.com/open-telemetry/opentelemetry-swift-core) 2.3.0** — `OpenTelemetryApi`, `OpenTelemetrySdk`
-- **[opentelemetry-swift](https://github.com/open-telemetry/opentelemetry-swift)** — OTLP proto adapters, URLSession instrumentation, ResourceExtension, SignPost integration, SwiftMetricsShim
+- **[opentelemetry-swift](https://github.com/open-telemetry/opentelemetry-swift) 3.0.0** — OTLP proto adapters, URLSession instrumentation, ResourceExtension, SignPost integration, SwiftMetricsShim
 - **[grpc-swift](https://github.com/grpc/grpc-swift) 2.2.2** — gRPC transport (v2, async/await)
+- **[Rainbow](https://github.com/onevcat/Rainbow) 4.x** — Colored console output
 
 All OTel types (`Span`, `Tracer`, `Logger`, `AttributeValue`, `SpanKind`, etc.) are re-exported via `@_exported import OpenTelemetryApi`, so you only need `import SignozSwift`.
 

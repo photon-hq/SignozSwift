@@ -76,6 +76,29 @@ struct ConfigurationTests {
         #expect(ai.signpostIntegration == false)
         #expect(ai.metricsShim == true)
     }
+
+    @Test("Console log defaults to auto")
+    func consoleLogDefault() {
+        let config = Configuration(serviceName: "test")
+        if case .auto = config.consoleLog {
+            // pass
+        } else {
+            Issue.record("Expected default .auto")
+        }
+    }
+
+    @Test("Console log can be overridden")
+    func consoleLogOverride() {
+        var config = Configuration(serviceName: "test")
+        config.consoleLog = .enabled
+        if case .enabled = config.consoleLog {} else {
+            Issue.record("Expected .enabled")
+        }
+        config.consoleLog = .disabled
+        if case .disabled = config.consoleLog {} else {
+            Issue.record("Expected .disabled")
+        }
+    }
 }
 
 // MARK: - Endpoint Parsing Tests
@@ -343,6 +366,27 @@ struct LoggerConvenienceTests {
             "method": "POST",
             "status": 201,
         ])
+    }
+}
+
+@Suite("Console Output")
+struct ConsoleOutputTests {
+
+    @Test("Formats console lines with sorted JSON-like attributes")
+    func formatsConsoleLinesWithAttributes() {
+        let line = formattedConsoleLine("Server started", level: "INFO", attributes: [
+            "port": 8080,
+            "host": "localhost",
+            "secure": true,
+        ])
+
+        #expect(line == #"[INFO] Server started {"host": "localhost", "port": 8080, "secure": true}"#)
+    }
+
+    @Test("Omits empty attribute payloads")
+    func omitsEmptyAttributePayloads() {
+        let line = formattedConsoleLine("Server started", level: "INFO")
+        #expect(line == "[INFO] Server started")
     }
 }
 

@@ -12,6 +12,7 @@ let signozDependencies: [Target.Dependency] = {
         .product(name: "GRPCCore", package: "grpc-swift"),
         .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
         .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+        .product(name: "Rainbow", package: "Rainbow"),
     ]
 
     #if canImport(Darwin)
@@ -54,6 +55,10 @@ let package = Package(
         .package(
             url: "https://github.com/apple/swift-protobuf.git",
             from: "1.28.1"
+        ),
+        .package(
+            url: "https://github.com/onevcat/Rainbow.git",
+            from: "4.0.0"
         ),
     ],
     targets: [
