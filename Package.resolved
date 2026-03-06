@@ -1,22 +1,31 @@
 {
-  "originHash" : "71c56a360874e706880eca6d9973daa9c1657069f977f89d7ed007f8311f0088",
+  "originHash" : "ecbe24ae460030325d8be002bdd4ac95db5d04e3db975ee7e07f53968db15f8e",
   "pins" : [
     {
       "identity" : "grpc-swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/grpc/grpc-swift.git",
       "state" : {
-        "revision" : "f857994e146f5146d702e9c31ac6f3c27d55d18a",
-        "version" : "1.27.0"
+        "revision" : "adc18c3e1c55027d0ce43893897ac448e3f27ebe",
+        "version" : "2.2.3"
+      }
+    },
+    {
+      "identity" : "grpc-swift-nio-transport",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/grpc/grpc-swift-nio-transport.git",
+      "state" : {
+        "revision" : "ca2303eb7f3df556beafbba33a143ffa30d5b786",
+        "version" : "1.2.3"
       }
     },
     {
       "identity" : "opentelemetry-swift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/open-telemetry/opentelemetry-swift",
+      "location" : "https://github.com/photon-hq/opentelemetry-swift",
       "state" : {
-        "revision" : "df57cc4fd0b4cf4f9d715253c6aaba4b6912f7e0",
-        "version" : "2.3.0"
+        "branch" : "no-grpc-v1",
+        "revision" : "fcebdec4d67061fcb6b4dc71bbfd3e1377b52fa7"
       }
     },
     {

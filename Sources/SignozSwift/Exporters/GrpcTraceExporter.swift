@@ -1,0 +1,62 @@
+import Foundation
+import GRPCCore
+import OpenTelemetryProtocolExporterCommon
+import OpenTelemetrySdk
+
+final class GrpcTraceExporter: SpanExporter {
+
+    private let client: any GrpcExportClient
+    private let defaultTimeout: TimeInterval
+    private let metadata: Metadata
+
+    private static let descriptor = MethodDescriptor(
+        fullyQualifiedService: "opentelemetry.proto.collector.trace.v1.TraceService",
+        method: "Export"
+    )
+
+    init(client: any GrpcExportClient, headers: [(String, String)], timeout: TimeInterval = 30) {
+        self.client = client
+        self.defaultTimeout = timeout
+        var md = Metadata()
+        for (key, value) in headers {
+            md.addString(value, forKey: key)
+        }
+        self.metadata = md
+    }
+
+    func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode {
+        let request = Opentelemetry_Proto_Collector_Trace_V1_ExportTraceServiceRequest.with {
+            $0.resourceSpans = SpanAdapter.toProtoResourceSpans(spanDataList: spans)
+        }
+
+        let timeout = explicitTimeout ?? defaultTimeout
+        let opts = {
+            var o = CallOptions.defaults
+            o.timeout = .seconds(Int64(timeout))
+            return o
+        }()
+
+        let semaphore = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: SpanExporterResultCode = .failure
+        let client = self.client
+        let md = self.metadata
+
+        Task { @Sendable in
+            defer { semaphore.signal() }
+            do {
+                let _: Opentelemetry_Proto_Collector_Trace_V1_ExportTraceServiceResponse =
+                    try await client.callUnary(
+                        request, descriptor: GrpcTraceExporter.descriptor, metadata: md, options: opts)
+                result = .success
+            } catch {
+                result = .failure
+            }
+        }
+
+        semaphore.wait()
+        return result
+    }
+
+    func flush(explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .success }
+    func shutdown(explicitTimeout: TimeInterval?) {}
+}
