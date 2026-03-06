@@ -369,6 +369,27 @@ struct LoggerConvenienceTests {
     }
 }
 
+@Suite("Console Output")
+struct ConsoleOutputTests {
+
+    @Test("Formats console lines with sorted JSON-like attributes")
+    func formatsConsoleLinesWithAttributes() {
+        let line = formattedConsoleLine("Server started", level: "INFO", attributes: [
+            "port": 8080,
+            "host": "localhost",
+            "secure": true,
+        ])
+
+        #expect(line == #"[INFO] Server started {"host": "localhost", "port": 8080, "secure": true}"#)
+    }
+
+    @Test("Omits empty attribute payloads")
+    func omitsEmptyAttributePayloads() {
+        let line = formattedConsoleLine("Server started", level: "INFO")
+        #expect(line == "[INFO] Server started")
+    }
+}
+
 // MARK: - Signoz Fallback Tests
 
 @Suite("Signoz Defaults")
