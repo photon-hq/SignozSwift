@@ -261,7 +261,7 @@ SignozSwift wraps the official OpenTelemetry Swift SDK — it does not reinvent 
 - **[opentelemetry-swift-core](https://github.com/open-telemetry/opentelemetry-swift-core) 2.3.0** — `OpenTelemetryApi`, `OpenTelemetrySdk`
 - **[opentelemetry-swift](https://github.com/open-telemetry/opentelemetry-swift) 3.0.0** — OTLP proto adapters, URLSession instrumentation, ResourceExtension, SignPost integration, SwiftMetricsShim
 - **[grpc-swift](https://github.com/grpc/grpc-swift) 2.2.2** — gRPC transport (v2, async/await)
-- **[Rainbow](https://github.com/onevcat/Rainbow) 4.0.0+** — Colored console output
+- **[Rainbow](https://github.com/onevcat/Rainbow) 4.x** — Colored console output
 
 All OTel types (`Span`, `Tracer`, `Logger`, `AttributeValue`, `SpanKind`, etc.) are re-exported via `@_exported import OpenTelemetryApi`, so you only need `import SignozSwift`.
 

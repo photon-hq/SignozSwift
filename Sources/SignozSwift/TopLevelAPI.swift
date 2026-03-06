@@ -120,4 +120,6 @@ public func fatal(_ body: String, attributes: [String: AttributeValue] = [:]) {
 private func consolePrint(_ message: String, level: String, color: (String) -> String) {
     guard Signoz.consoleLogEnabled else { return }
     fputs(color("[\(level)] \(message)") + "\n", consoleStdErr)
+    // Flush immediately because redirected stderr may be buffered on some platforms.
+    fflush(consoleStdErr)
 }
