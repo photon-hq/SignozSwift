@@ -255,9 +255,12 @@ public enum Signoz {
         // 6b. Bridge swift-distributed-tracing → OTel SDK
         //     Required for grpc-swift-extras OTel tracing interceptors.
         //     Can only be called once per process (precondition in InstrumentationSystem).
-        if !_instrumentationBootstrapped {
+        lock.lock()
+        let shouldBootstrapInstrumentation = !_instrumentationBootstrapped
+        if shouldBootstrapInstrumentation { _instrumentationBootstrapped = true }
+        lock.unlock()
+        if shouldBootstrapInstrumentation {
             InstrumentationSystem.bootstrap(OTelTracingBridge())
-            _instrumentationBootstrapped = true
         }
 
         // 7. Log exporter + LoggerProvider

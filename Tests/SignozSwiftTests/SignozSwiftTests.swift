@@ -2,6 +2,8 @@ import Testing
 import OpenTelemetryApi
 import OpenTelemetrySdk
 import InMemoryExporter
+import Instrumentation
+import ServiceContextModule
 @testable import SignozSwift
 
 // MARK: - Configuration Tests
@@ -579,5 +581,139 @@ struct IntegrationTests {
                 "latency_ms": 42,
             ])
         }
+    }
+}
+
+// MARK: - W3C Trace Context Propagation Tests
+
+/// Simple dictionary-based carrier for testing inject/extract.
+private struct DictCarrier: Sendable {
+    var headers: [String: String] = [:]
+}
+
+private struct DictInjector: Instrumentation.Injector {
+    typealias Carrier = DictCarrier
+    func inject(_ value: String, forKey key: String, into carrier: inout DictCarrier) {
+        carrier.headers[key] = value
+    }
+}
+
+private struct DictExtractor: Instrumentation.Extractor {
+    typealias Carrier = DictCarrier
+    func extract(key: String, from carrier: DictCarrier) -> String? {
+        carrier.headers[key]
+    }
+}
+
+@Suite("W3C Trace Context Propagation")
+struct TraceContextPropagationTests {
+
+    private let bridge = OTelTracingBridge()
+    private let injector = DictInjector()
+    private let extractor = DictExtractor()
+
+    @Test("Round-trip inject → extract preserves trace/span IDs and sampled flag")
+    func roundTrip() {
+        let traceId = TraceId.random()
+        let spanId = SpanId.random()
+        var flags = TraceFlags()
+        flags.setIsSampled(true)
+
+        let original = SpanContext.createFromRemoteParent(
+            traceId: traceId, spanId: spanId, traceFlags: flags, traceState: TraceState()
+        )
+
+        // Inject
+        var ctx = ServiceContext.topLevel
+        ctx.otelSpanContext = original
+        var carrier = DictCarrier()
+        bridge.inject(ctx, into: &carrier, using: injector)
+
+        // Extract
+        var extracted = ServiceContext.topLevel
+        bridge.extract(carrier, into: &extracted, using: extractor)
+
+        let result = extracted.otelSpanContext
+        #expect(result != nil)
+        #expect(result!.traceId == traceId)
+        #expect(result!.spanId == spanId)
+        #expect(result!.traceFlags.sampled == true)
+    }
+
+    @Test("Unsampled flag round-trips correctly")
+    func unsampledRoundTrip() {
+        let original = SpanContext.createFromRemoteParent(
+            traceId: .random(), spanId: .random(), traceFlags: TraceFlags(), traceState: TraceState()
+        )
+
+        var ctx = ServiceContext.topLevel
+        ctx.otelSpanContext = original
+        var carrier = DictCarrier()
+        bridge.inject(ctx, into: &carrier, using: injector)
+
+        var extracted = ServiceContext.topLevel
+        bridge.extract(carrier, into: &extracted, using: extractor)
+
+        #expect(extracted.otelSpanContext?.traceFlags.sampled == false)
+    }
+
+    @Test("Sampled bitmask flag (e.g. 03) is treated as sampled")
+    func sampledBitmask() {
+        let carrier = DictCarrier(headers: [
+            "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-03",
+        ])
+
+        var ctx = ServiceContext.topLevel
+        bridge.extract(carrier, into: &ctx, using: extractor)
+
+        #expect(ctx.otelSpanContext?.traceFlags.sampled == true)
+    }
+
+    @Test("Tracestate round-trips correctly")
+    func tracestateRoundTrip() {
+        var traceState = TraceState()
+        traceState = traceState.setting(key: "vendor1", value: "value1")
+        traceState = traceState.setting(key: "vendor2", value: "value2")
+
+        var flags = TraceFlags()
+        flags.setIsSampled(true)
+        let original = SpanContext.createFromRemoteParent(
+            traceId: .random(), spanId: .random(), traceFlags: flags, traceState: traceState
+        )
+
+        var ctx = ServiceContext.topLevel
+        ctx.otelSpanContext = original
+        var carrier = DictCarrier()
+        bridge.inject(ctx, into: &carrier, using: injector)
+
+        #expect(carrier.headers["tracestate"] != nil)
+
+        var extracted = ServiceContext.topLevel
+        bridge.extract(carrier, into: &extracted, using: extractor)
+
+        let result = extracted.otelSpanContext!
+        let entries = result.traceState.entries
+        #expect(entries.contains { $0.key == "vendor1" && $0.value == "value1" })
+        #expect(entries.contains { $0.key == "vendor2" && $0.value == "value2" })
+    }
+
+    @Test("Invalid traceparent is ignored")
+    func invalidTraceparent() {
+        let carrier = DictCarrier(headers: ["traceparent": "garbage"])
+
+        var ctx = ServiceContext.topLevel
+        bridge.extract(carrier, into: &ctx, using: extractor)
+
+        #expect(ctx.otelSpanContext == nil)
+    }
+
+    @Test("Missing traceparent leaves context unchanged")
+    func missingTraceparent() {
+        let carrier = DictCarrier()
+
+        var ctx = ServiceContext.topLevel
+        bridge.extract(carrier, into: &ctx, using: extractor)
+
+        #expect(ctx.otelSpanContext == nil)
     }
 }

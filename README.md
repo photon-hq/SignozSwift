@@ -209,7 +209,7 @@ info("Server started", attributes: ["port": 8080])
 
 ### gRPC Auto-Tracing
 
-If your app uses gRPC (via `grpc-swift`), you can automatically trace all RPC calls by attaching the bundled interceptors from [grpc-swift-extras](https://github.com/grpc/grpc-swift-extras):
+If your app uses gRPC (via [`grpc-swift`](https://github.com/grpc/grpc-swift-2)), you can automatically trace all RPC calls by attaching the bundled interceptors from [grpc-swift-extras](https://github.com/grpc/grpc-swift-extras):
 
 ```swift
 import SignozSwift

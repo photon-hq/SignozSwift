@@ -99,7 +99,7 @@ struct OTelTracingBridge: Tracing.Tracer {
             return
         }
 
-        let sampled = parts[3] == "01"
+        let sampled = UInt8(String(parts[3]), radix: 16).map { $0 & 0x01 != 0 } ?? false
         var traceFlags = TraceFlags()
         traceFlags.setIsSampled(sampled)
 
