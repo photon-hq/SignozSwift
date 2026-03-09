@@ -1,0 +1,14 @@
+name: Check README
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-readme:
+    uses: photon-hq/buildspace/.github/workflows/check-readme.yaml@main
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
