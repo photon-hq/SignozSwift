@@ -207,6 +207,40 @@ info("Server started", attributes: ["port": 8080])
 // stderr: [INFO] Server started {"port": 8080}
 ```
 
+### gRPC Auto-Tracing
+
+If your app uses gRPC (via `grpc-swift`), you can automatically trace all RPC calls by attaching the bundled interceptors from [grpc-swift-extras](https://github.com/grpc/grpc-swift-extras):
+
+```swift
+import SignozSwift
+import GRPCNIOTransportHTTP2
+
+// Client — auto-creates a span for each outgoing RPC
+let client = GRPCClient(
+    transport: try .http2NIOPosix(target: .dns(host: "api.example.com", port: 443)),
+    interceptors: [
+        ClientOTelTracingInterceptor(
+            serverHostname: "api.example.com",
+            networkTransportMethod: "tcp"
+        )
+    ]
+)
+
+// Server — auto-creates a span for each incoming RPC
+let server = GRPCServer(
+    transport: try .http2NIOPosix(address: .ipv4(host: "0.0.0.0", port: 8080)),
+    services: [myService],
+    interceptors: [
+        ServerOTelTracingInterceptor(
+            serverHostname: "api.example.com",
+            networkTransportMethod: "tcp"
+        )
+    ]
+)
+```
+
+Each span is annotated with OTel semantic conventions (`rpc.system`, `rpc.service`, `rpc.method`, `rpc.grpc.status_code`, etc.) and context is automatically propagated via W3C `traceparent` headers.
+
 ### Attribute Literals
 
 `AttributeValue` conforms to `ExpressibleByStringLiteral`, `ExpressibleByIntegerLiteral`, `ExpressibleByFloatLiteral`, and `ExpressibleByBooleanLiteral`, so you can write:
@@ -260,7 +294,8 @@ SignozSwift wraps the official OpenTelemetry Swift SDK — it does not reinvent 
 
 - **[opentelemetry-swift-core](https://github.com/open-telemetry/opentelemetry-swift-core) 2.3.0** — `OpenTelemetryApi`, `OpenTelemetrySdk`
 - **[opentelemetry-swift](https://github.com/open-telemetry/opentelemetry-swift) 3.0.0** — OTLP proto adapters, URLSession instrumentation, ResourceExtension, SignPost integration, SwiftMetricsShim
-- **[grpc-swift](https://github.com/grpc/grpc-swift) 2.2.2** — gRPC transport (v2, async/await)
+- **[grpc-swift-2](https://github.com/grpc/grpc-swift-2) 2.2.1** — gRPC transport (v2, async/await)
+- **[grpc-swift-extras](https://github.com/grpc/grpc-swift-extras) 2.1.1** — OTel tracing interceptors for automatic gRPC span injection
 - **[Rainbow](https://github.com/onevcat/Rainbow) 4.x** — Colored console output
 
 All OTel types (`Span`, `Tracer`, `Logger`, `AttributeValue`, `SpanKind`, etc.) are re-exported via `@_exported import OpenTelemetryApi`, so you only need `import SignozSwift`.

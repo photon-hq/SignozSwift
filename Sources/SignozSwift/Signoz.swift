@@ -7,6 +7,7 @@ import OpenTelemetryProtocolExporterCommon
 import PersistenceExporter
 import OpenTelemetrySdk
 import SwiftMetricsShim
+import Tracing
 
 #if canImport(Darwin)
 nonisolated(unsafe) private let stdErr = stderr
@@ -45,7 +46,7 @@ public enum Signoz {
     // MARK: - State
 
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var _tracer: (any Tracer)?
+    nonisolated(unsafe) private static var _tracer: (any OpenTelemetryApi.Tracer)?
     nonisolated(unsafe) private static var _logger: (any Logger)?
     nonisolated(unsafe) private static var _client: (any GrpcExportClient)?
     nonisolated(unsafe) private static var _clientShutdown: (@Sendable () -> Void)?
@@ -54,6 +55,7 @@ public enum Signoz {
     nonisolated(unsafe) private static var _logProcessor: (any LogRecordProcessor)?
 
     nonisolated(unsafe) private static var _consoleLogEnabled: Bool = false
+    nonisolated(unsafe) private static var _instrumentationBootstrapped: Bool = false
 
     #if canImport(URLSessionInstrumentation)
     nonisolated(unsafe) private static var _urlSessionInstrumentation: URLSessionInstrumentation?
@@ -62,7 +64,7 @@ public enum Signoz {
     // MARK: - Public API
 
     /// No-op tracer returned before ``start(serviceName:_:)`` is called.
-    private static let noopTracer: any Tracer = {
+    private static let noopTracer: any OpenTelemetryApi.Tracer = {
         nonisolated(unsafe) let t = DefaultTracer.instance
         return t
     }()
@@ -73,7 +75,7 @@ public enum Signoz {
         .build()
 
     /// The configured OTel tracer. Falls back to a no-op tracer if ``start(serviceName:_:)`` hasn't been called.
-    public static var tracer: any Tracer {
+    public static var tracer: any OpenTelemetryApi.Tracer {
         lock.lock()
         defer { lock.unlock() }
         return _tracer ?? noopTracer
@@ -84,6 +86,13 @@ public enum Signoz {
         lock.lock()
         defer { lock.unlock() }
         return _consoleLogEnabled
+    }
+
+    /// The underlying TracerProviderSdk, exposed for the distributed-tracing bridge.
+    static var tracerProvider: TracerProviderSdk? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _tracerProvider
     }
 
     /// The configured OTel logger. Falls back to a no-op logger if ``start(serviceName:_:)`` hasn't been called.
@@ -242,6 +251,14 @@ public enum Signoz {
 
         let tracerProvider = tracerBuilder.build()
         OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
+
+        // 6b. Bridge swift-distributed-tracing → OTel SDK
+        //     Required for grpc-swift-extras OTel tracing interceptors.
+        //     Can only be called once per process (precondition in InstrumentationSystem).
+        if !_instrumentationBootstrapped {
+            InstrumentationSystem.bootstrap(OTelTracingBridge())
+            _instrumentationBootstrapped = true
+        }
 
         // 7. Log exporter + LoggerProvider
         let otlpLogExporter: any LogRecordExporter = GrpcLogExporter(

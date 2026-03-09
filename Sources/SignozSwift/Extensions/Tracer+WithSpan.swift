@@ -1,6 +1,6 @@
 @preconcurrency import OpenTelemetryApi
 
-extension Tracer {
+extension OpenTelemetryApi.Tracer {
 
     /// Execute a synchronous operation within a span.
     ///
