@@ -36,6 +36,10 @@ let package = Package(
             name: "SignozSwift",
             targets: ["SignozSwift"]
         ),
+        .library(
+            name: "SignozVapor",
+            targets: ["SignozVapor"]
+        ),
     ],
     dependencies: [
         .package(
@@ -70,6 +74,10 @@ let package = Package(
             url: "https://github.com/onevcat/Rainbow.git",
             from: "4.0.0"
         ),
+        .package(
+            url: "https://github.com/vapor/vapor.git",
+            from: "4.89.0"
+        ),
     ],
     targets: [
         .target(
@@ -97,6 +105,13 @@ let package = Package(
                 .enableExperimentalFeature(
                     "AvailabilityMacro=gRPCSwiftNIOTransport 2.4:macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0"
                 ),
+            ]
+        ),
+        .target(
+            name: "SignozVapor",
+            dependencies: [
+                "SignozSwift",
+                .product(name: "Vapor", package: "vapor"),
             ]
         ),
         .testTarget(
