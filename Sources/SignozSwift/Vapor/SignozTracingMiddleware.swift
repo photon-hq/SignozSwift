@@ -31,7 +31,11 @@ public struct SignozTracingMiddleware: AsyncMiddleware {
         builder.setSpanKind(spanKind: .server)
 
         // Extract W3C traceparent/tracestate from request headers
-        if let parentContext = Self.extractTraceContext(from: request) {
+        if let traceparent = request.headers.first(name: W3CTraceContext.traceparentKey),
+           let parentContext = W3CTraceContext.parse(
+               traceparent: traceparent,
+               tracestate: request.headers.first(name: W3CTraceContext.tracestateKey)
+           ) {
             builder.setParent(parentContext)
         }
 
@@ -62,7 +66,7 @@ public struct SignozTracingMiddleware: AsyncMiddleware {
                 span.status = .ok
             }
 
-            Self.injectTraceContext(span: span, into: response)
+            Self.injectTraceContext(spanContext: span.context, into: response)
             span.end()
             return response
         } catch {
@@ -92,60 +96,12 @@ public struct SignozTracingMiddleware: AsyncMiddleware {
 
     // MARK: - W3C Trace Context
 
-    private static func extractTraceContext(from request: Request) -> SpanContext? {
-        guard let traceparent = request.headers.first(name: "traceparent") else {
-            return nil
-        }
-
-        let parts = traceparent.split(separator: "-")
-        guard parts.count == 4, parts[0] == "00" else {
-            return nil
-        }
-
-        let traceId = TraceId(fromHexString: String(parts[1]))
-        let spanId = SpanId(fromHexString: String(parts[2]))
-        guard traceId.isValid, spanId.isValid else {
-            return nil
-        }
-
-        let sampled = UInt8(String(parts[3]), radix: 16).map { $0 & 0x01 != 0 } ?? false
-        var traceFlags = TraceFlags()
-        traceFlags.setIsSampled(sampled)
-
-        var traceState = TraceState()
-        if let tracestateHeader = request.headers.first(name: "tracestate") {
-            for entry in tracestateHeader.split(separator: ",") {
-                let kv = entry.split(separator: "=", maxSplits: 1)
-                if kv.count == 2 {
-                    traceState = traceState.setting(
-                        key: String(kv[0]).trimmingCharacters(in: .whitespaces),
-                        value: String(kv[1]).trimmingCharacters(in: .whitespaces)
-                    )
-                }
-            }
-        }
-
-        return SpanContext.createFromRemoteParent(
-            traceId: traceId,
-            spanId: spanId,
-            traceFlags: traceFlags,
-            traceState: traceState
-        )
-    }
-
-    private static func injectTraceContext(span: any OpenTelemetryApi.Span, into response: Response) {
-        let ctx = span.context
-        guard ctx.isValid else { return }
-
-        let flags = ctx.traceFlags.sampled ? "01" : "00"
-        let traceparent = "00-\(ctx.traceId.hexString)-\(ctx.spanId.hexString)-\(flags)"
-        response.headers.replaceOrAdd(name: "traceparent", value: traceparent)
-
-        if !ctx.traceState.entries.isEmpty {
-            let tracestate = ctx.traceState.entries
-                .map { "\($0.key)=\($0.value)" }
-                .joined(separator: ",")
-            response.headers.replaceOrAdd(name: "tracestate", value: tracestate)
+    private static func injectTraceContext(spanContext: SpanContext, into response: Response) {
+        guard spanContext.isValid else { return }
+        let (traceparent, tracestate) = W3CTraceContext.serialize(spanContext)
+        response.headers.replaceOrAdd(name: W3CTraceContext.traceparentKey, value: traceparent)
+        if let tracestate {
+            response.headers.replaceOrAdd(name: W3CTraceContext.tracestateKey, value: tracestate)
         }
     }
 }

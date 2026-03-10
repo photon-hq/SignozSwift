@@ -9,9 +9,6 @@ import OpenTelemetrySdk
 struct OTelTracingBridge: Tracing.Tracer {
     typealias Span = BridgedSpan
 
-    private static let traceparentKey = "traceparent"
-    private static let tracestateKey = "tracestate"
-
     func startSpan<Instant: TracerInstant>(
         _ operationName: String,
         context: @autoclosure () -> ServiceContext,
@@ -64,17 +61,10 @@ struct OTelTracingBridge: Tracing.Tracer {
             return
         }
 
-        // W3C traceparent: version-traceId-spanId-traceFlags
-        let flags = spanContext.traceFlags.sampled ? "01" : "00"
-        let traceparent = "00-\(spanContext.traceId.hexString)-\(spanContext.spanId.hexString)-\(flags)"
-        injector.inject(traceparent, forKey: Self.traceparentKey, into: &carrier)
-
-        // W3C tracestate (if non-empty)
-        if !spanContext.traceState.entries.isEmpty {
-            let tracestate = spanContext.traceState.entries
-                .map { "\($0.key)=\($0.value)" }
-                .joined(separator: ",")
-            injector.inject(tracestate, forKey: Self.tracestateKey, into: &carrier)
+        let (traceparent, tracestate) = W3CTraceContext.serialize(spanContext)
+        injector.inject(traceparent, forKey: W3CTraceContext.traceparentKey, into: &carrier)
+        if let tracestate {
+            injector.inject(tracestate, forKey: W3CTraceContext.tracestateKey, into: &carrier)
         }
     }
 
@@ -83,46 +73,13 @@ struct OTelTracingBridge: Tracing.Tracer {
         into context: inout ServiceContext,
         using extractor: Extract
     ) where Extract.Carrier == Carrier {
-        guard let traceparent = extractor.extract(key: Self.traceparentKey, from: carrier) else {
+        guard let traceparent = extractor.extract(key: W3CTraceContext.traceparentKey, from: carrier) else {
             return
         }
 
-        // Parse W3C traceparent: version-traceId-spanId-traceFlags
-        let parts = traceparent.split(separator: "-")
-        guard parts.count == 4, parts[0] == "00" else {
-            return
+        let tracestate = extractor.extract(key: W3CTraceContext.tracestateKey, from: carrier)
+        if let spanContext = W3CTraceContext.parse(traceparent: traceparent, tracestate: tracestate) {
+            context.otelSpanContext = spanContext
         }
-
-        let traceId = TraceId(fromHexString: String(parts[1]))
-        let spanId = SpanId(fromHexString: String(parts[2]))
-        guard traceId.isValid, spanId.isValid else {
-            return
-        }
-
-        let sampled = UInt8(String(parts[3]), radix: 16).map { $0 & 0x01 != 0 } ?? false
-        var traceFlags = TraceFlags()
-        traceFlags.setIsSampled(sampled)
-
-        // Parse tracestate if present
-        var traceState = TraceState()
-        if let tracestateHeader = extractor.extract(key: Self.tracestateKey, from: carrier) {
-            for entry in tracestateHeader.split(separator: ",") {
-                let kv = entry.split(separator: "=", maxSplits: 1)
-                if kv.count == 2 {
-                    traceState = traceState.setting(
-                        key: String(kv[0]).trimmingCharacters(in: .whitespaces),
-                        value: String(kv[1]).trimmingCharacters(in: .whitespaces)
-                    )
-                }
-            }
-        }
-
-        let spanContext = SpanContext.createFromRemoteParent(
-            traceId: traceId,
-            spanId: spanId,
-            traceFlags: traceFlags,
-            traceState: traceState
-        )
-        context.otelSpanContext = spanContext
     }
 }
