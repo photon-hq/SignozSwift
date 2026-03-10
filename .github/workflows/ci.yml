@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   macOS:
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@v4
       - uses: swift-actions/setup-swift@v2
