@@ -11,8 +11,11 @@ enum W3CTraceContext {
 
     /// Parse W3C `traceparent` and optional `tracestate` header values into a `SpanContext`.
     static func parse(traceparent: String, tracestate: String? = nil) -> SpanContext? {
+        // W3C spec: reject only version "ff"; accept unknown future versions
+        // for forward compatibility (the first 55 chars are guaranteed stable).
+        // Future versions may append extra `-` delimited fields, so require >= 4 parts.
         let parts = traceparent.split(separator: "-")
-        guard parts.count == 4, parts[0] == "00" else {
+        guard parts.count >= 4, parts[0] != "ff" else {
             return nil
         }
 
