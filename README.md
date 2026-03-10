@@ -12,14 +12,6 @@ dependencies: [
 ]
 ```
 
-For Vapor projects, enable the `Vapor` trait to get automatic HTTP request tracing:
-
-```swift
-dependencies: [
-    .package(url: "https://github.com/photon-hq/SignozSwift.git", from: "0.1.0", traits: ["Vapor"]),
-]
-```
-
 Then add `"SignozSwift"` to your target's dependencies:
 
 ```swift
@@ -55,11 +47,19 @@ info("Request handled", attributes: ["status": 200])
 
 ### Vapor HTTP Backend
 
-Enable the `Vapor` trait in your package dependency (see [Installation](#installation)), then register the middleware:
+For Vapor projects, depend on the `SignozVapor` product instead of `SignozSwift` — it re-exports everything plus the tracing middleware:
 
 ```swift
-import SignozSwift
-import Vapor
+.target(
+    name: "MyVaporApp",
+    dependencies: [
+        .product(name: "SignozVapor", package: "SignozSwift"),
+    ]
+),
+```
+
+```swift
+import SignozVapor
 
 func configure(_ app: Application) throws {
     Signoz.start(serviceName: "my-vapor-api") {

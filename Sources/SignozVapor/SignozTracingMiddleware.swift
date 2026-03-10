@@ -1,18 +1,13 @@
-#if SIGNOZ_VAPOR
-import Vapor
+@_exported import SignozSwift
 @preconcurrency import OpenTelemetryApi
+import Vapor
 
 /// Vapor middleware that automatically creates OpenTelemetry `.server` spans
 /// for every incoming HTTP request with standard OTel HTTP semantic convention attributes.
 ///
-/// Enable by adding the `Vapor` trait to your SignozSwift dependency:
+/// Register the middleware to opt in to automatic request tracing:
 /// ```swift
-/// .package(url: "https://github.com/photon-hq/SignozSwift.git", from: "0.1.0", traits: ["Vapor"])
-/// ```
-///
-/// Then register the middleware:
-/// ```swift
-/// import SignozSwift
+/// import SignozVapor
 ///
 /// app.middleware.use(SignozTracingMiddleware())
 /// ```
@@ -112,4 +107,3 @@ public struct SignozTracingMiddleware: AsyncMiddleware {
         }
     }
 }
-#endif

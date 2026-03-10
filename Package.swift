@@ -36,9 +36,10 @@ let package = Package(
             name: "SignozSwift",
             targets: ["SignozSwift"]
         ),
-    ],
-    traits: [
-        .trait(name: "Vapor", description: "Enable Vapor HTTP middleware integration"),
+        .library(
+            name: "SignozVapor",
+            targets: ["SignozVapor"]
+        ),
     ],
     dependencies: [
         .package(
@@ -81,9 +82,7 @@ let package = Package(
     targets: [
         .target(
             name: "SignozSwift",
-            dependencies: signozDependencies + [
-                .product(name: "Vapor", package: "vapor", condition: .when(traits: ["Vapor"])),
-            ],
+            dependencies: signozDependencies,
             swiftSettings: [
                 .enableExperimentalFeature(
                     "AvailabilityMacro=gRPCSwiftExtras 2.0:macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0"
@@ -106,7 +105,13 @@ let package = Package(
                 .enableExperimentalFeature(
                     "AvailabilityMacro=gRPCSwiftNIOTransport 2.4:macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0"
                 ),
-                .define("SIGNOZ_VAPOR", .when(traits: ["Vapor"])),
+            ]
+        ),
+        .target(
+            name: "SignozVapor",
+            dependencies: [
+                "SignozSwift",
+                .product(name: "Vapor", package: "vapor"),
             ]
         ),
         .testTarget(

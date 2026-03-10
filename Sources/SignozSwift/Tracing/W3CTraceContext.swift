@@ -4,13 +4,13 @@
 ///
 /// Used by both `OTelTracingBridge` (for gRPC distributed tracing) and
 /// `SignozTracingMiddleware` (for Vapor HTTP tracing).
-enum W3CTraceContext {
+public enum W3CTraceContext {
 
-    static let traceparentKey = "traceparent"
-    static let tracestateKey = "tracestate"
+    public static let traceparentKey = "traceparent"
+    public static let tracestateKey = "tracestate"
 
     /// Parse W3C `traceparent` and optional `tracestate` header values into a `SpanContext`.
-    static func parse(traceparent: String, tracestate: String? = nil) -> SpanContext? {
+    public static func parse(traceparent: String, tracestate: String? = nil) -> SpanContext? {
         // W3C spec: reject only version "ff"; accept unknown future versions
         // for forward compatibility (the first 55 chars are guaranteed stable).
         // Future versions may append extra `-` delimited fields, so require >= 4 parts.
@@ -51,7 +51,7 @@ enum W3CTraceContext {
     }
 
     /// Serialize a `SpanContext` into W3C `traceparent` and optional `tracestate` header values.
-    static func serialize(_ spanContext: SpanContext) -> (traceparent: String, tracestate: String?) {
+    public static func serialize(_ spanContext: SpanContext) -> (traceparent: String, tracestate: String?) {
         let flags = spanContext.traceFlags.sampled ? "01" : "00"
         let traceparent = "00-\(spanContext.traceId.hexString)-\(spanContext.spanId.hexString)-\(flags)"
 
