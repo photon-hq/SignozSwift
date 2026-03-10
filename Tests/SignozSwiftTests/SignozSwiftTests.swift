@@ -1,7 +1,12 @@
+import Foundation
 import Testing
 import OpenTelemetryApi
 import OpenTelemetrySdk
 import InMemoryExporter
+import Instrumentation
+import ServiceContextModule
+import GRPCCore
+import GRPCInProcessTransport
 @testable import SignozSwift
 
 // MARK: - Configuration Tests
@@ -579,5 +584,299 @@ struct IntegrationTests {
                 "latency_ms": 42,
             ])
         }
+    }
+
+    @Test("gRPC auto-tracing creates client and server spans")
+    func grpcAutoTracing() async throws {
+        guard collectorIsRunning() else { return }
+
+        Signoz.start(serviceName: "signoz-grpc-test") {
+            $0.spanProcessing = .simple
+            $0.autoInstrumentation.metricsShim = false
+        }
+
+        let inProcess = InProcessTransport()
+
+        try await withGRPCServer(
+            transport: inProcess.server,
+            services: [EchoService()],
+            interceptors: [ServerOTelTracingInterceptor(
+                serverHostname: "in-process",
+                networkTransportMethod: "in-process"
+            )]
+        ) { _ in
+            try await withGRPCClient(
+                transport: inProcess.client,
+                interceptors: [ClientOTelTracingInterceptor(
+                    serverHostname: "in-process",
+                    networkTransportMethod: "in-process"
+                )]
+            ) { client in
+                let response = try await client.unary(
+                    request: ClientRequest(message: "hello from test"),
+                    descriptor: .echo,
+                    serializer: StringSerializer(),
+                    deserializer: StringDeserializer(),
+                    options: .defaults
+                ) { try $0.message }
+
+                #expect(response == "echo: hello from test")
+            }
+        }
+
+        Signoz.shutdown()
+
+        // Give the collector a moment to process
+        try await Task.sleep(for: .seconds(1))
+
+        let logs = dockerLogs(container: "otel-collector")
+        // Both client and server spans use the fully-qualified method name
+        #expect(
+            logs.contains("test.EchoService/Echo"),
+            "Expected gRPC span in collector output"
+        )
+        // Interceptors set rpc.system attribute
+        #expect(
+            logs.contains("rpc.system"),
+            "Expected rpc.system attribute in collector output"
+        )
+        // Log emitted inside the gRPC handler (auto-linked to span via traceId/spanId)
+        #expect(
+            logs.contains("echo handler called"),
+            "Expected handler log in collector output"
+        )
+    }
+
+    @Test("Exported telemetry is received by collector")
+    func verifyCollectorReceivesTelemetry() throws {
+        // Skip if the collector container isn't running
+        guard collectorIsRunning() else {
+            return  // Collector not running — skip gracefully
+        }
+
+        Signoz.start(serviceName: "signoz-swift-verify-test") {
+            $0.spanProcessing = .simple
+            $0.autoInstrumentation.metricsShim = false
+        }
+
+        span("verify.collector", kind: .internal) { s in
+            s.setAttribute(key: "test.marker", value: "collector-check")
+        }
+        info("verify collector log", attributes: ["marker": "collector-check"])
+
+        Signoz.shutdown()
+
+        // Give the collector a moment to process
+        Thread.sleep(forTimeInterval: 1.0)
+
+        // Read collector debug output to verify telemetry was received
+        let logs = dockerLogs(container: "otel-collector")
+        #expect(
+            logs.contains("verify.collector"),
+            "Expected span 'verify.collector' in collector debug output"
+        )
+        #expect(
+            logs.contains("verify collector log"),
+            "Expected log 'verify collector log' in collector debug output"
+        )
+    }
+}
+
+// MARK: - Docker Helpers (for collector verification)
+
+/// Check if the otel-collector container is running.
+private func collectorIsRunning() -> Bool {
+    let output = shell("docker", "inspect", "-f", "{{.State.Running}}", "otel-collector")
+    return output.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+}
+
+/// Get logs from a Docker container (last 500 lines of combined stdout + stderr).
+private func dockerLogs(container: String) -> String {
+    shell("docker", "logs", "--tail", "500", container)
+}
+
+/// Run a shell command and return its combined output.
+private func shell(_ args: String...) -> String {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = args
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = pipe
+    try? process.run()
+    // Read before waitUntilExit to avoid pipe-buffer deadlock
+    // when output exceeds 64 KB.
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    return String(data: data, encoding: .utf8) ?? ""
+}
+
+// MARK: - gRPC Echo Service (for auto-tracing test)
+
+@available(gRPCSwift 2.0, *)
+private extension MethodDescriptor {
+    static let echo = Self(fullyQualifiedService: "test.EchoService", method: "Echo")
+}
+
+@available(gRPCSwift 2.0, *)
+private struct StringSerializer: MessageSerializer {
+    func serialize<Bytes: GRPCContiguousBytes>(_ message: String) throws -> Bytes {
+        Bytes(message.utf8)
+    }
+}
+
+@available(gRPCSwift 2.0, *)
+private struct StringDeserializer: MessageDeserializer {
+    func deserialize<Bytes: GRPCContiguousBytes>(_ bytes: Bytes) throws -> String {
+        bytes.withUnsafeBytes { String(decoding: $0, as: UTF8.self) }
+    }
+}
+
+@available(gRPCSwift 2.0, *)
+private struct EchoService: RegistrableRPCService {
+    func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
+        router.registerHandler(
+            forMethod: .echo,
+            deserializer: StringDeserializer(),
+            serializer: StringSerializer()
+        ) { request, _ in
+            let message = try await request.messages.reduce(into: "") { $0 += $1 }
+            info("echo handler called", attributes: ["rpc.request": .string(message)])
+            return StreamingServerResponse(single: ServerResponse(message: "echo: \(message)"))
+        }
+    }
+}
+
+// MARK: - W3C Trace Context Propagation Tests
+
+/// Simple dictionary-based carrier for testing inject/extract.
+private struct DictCarrier: Sendable {
+    var headers: [String: String] = [:]
+}
+
+private struct DictInjector: Instrumentation.Injector {
+    typealias Carrier = DictCarrier
+    func inject(_ value: String, forKey key: String, into carrier: inout DictCarrier) {
+        carrier.headers[key] = value
+    }
+}
+
+private struct DictExtractor: Instrumentation.Extractor {
+    typealias Carrier = DictCarrier
+    func extract(key: String, from carrier: DictCarrier) -> String? {
+        carrier.headers[key]
+    }
+}
+
+@Suite("W3C Trace Context Propagation")
+struct TraceContextPropagationTests {
+
+    private let bridge = OTelTracingBridge()
+    private let injector = DictInjector()
+    private let extractor = DictExtractor()
+
+    @Test("Round-trip inject → extract preserves trace/span IDs and sampled flag")
+    func roundTrip() {
+        let traceId = TraceId.random()
+        let spanId = SpanId.random()
+        var flags = TraceFlags()
+        flags.setIsSampled(true)
+
+        let original = SpanContext.createFromRemoteParent(
+            traceId: traceId, spanId: spanId, traceFlags: flags, traceState: TraceState()
+        )
+
+        // Inject
+        var ctx = ServiceContext.topLevel
+        ctx.otelSpanContext = original
+        var carrier = DictCarrier()
+        bridge.inject(ctx, into: &carrier, using: injector)
+
+        // Extract
+        var extracted = ServiceContext.topLevel
+        bridge.extract(carrier, into: &extracted, using: extractor)
+
+        let result = extracted.otelSpanContext
+        #expect(result != nil)
+        #expect(result!.traceId == traceId)
+        #expect(result!.spanId == spanId)
+        #expect(result!.traceFlags.sampled == true)
+    }
+
+    @Test("Unsampled flag round-trips correctly")
+    func unsampledRoundTrip() {
+        let original = SpanContext.createFromRemoteParent(
+            traceId: .random(), spanId: .random(), traceFlags: TraceFlags(), traceState: TraceState()
+        )
+
+        var ctx = ServiceContext.topLevel
+        ctx.otelSpanContext = original
+        var carrier = DictCarrier()
+        bridge.inject(ctx, into: &carrier, using: injector)
+
+        var extracted = ServiceContext.topLevel
+        bridge.extract(carrier, into: &extracted, using: extractor)
+
+        #expect(extracted.otelSpanContext?.traceFlags.sampled == false)
+    }
+
+    @Test("Sampled bitmask flag (e.g. 03) is treated as sampled")
+    func sampledBitmask() {
+        let carrier = DictCarrier(headers: [
+            "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-03",
+        ])
+
+        var ctx = ServiceContext.topLevel
+        bridge.extract(carrier, into: &ctx, using: extractor)
+
+        #expect(ctx.otelSpanContext?.traceFlags.sampled == true)
+    }
+
+    @Test("Tracestate round-trips correctly")
+    func tracestateRoundTrip() {
+        var traceState = TraceState()
+        traceState = traceState.setting(key: "vendor1", value: "value1")
+        traceState = traceState.setting(key: "vendor2", value: "value2")
+
+        var flags = TraceFlags()
+        flags.setIsSampled(true)
+        let original = SpanContext.createFromRemoteParent(
+            traceId: .random(), spanId: .random(), traceFlags: flags, traceState: traceState
+        )
+
+        var ctx = ServiceContext.topLevel
+        ctx.otelSpanContext = original
+        var carrier = DictCarrier()
+        bridge.inject(ctx, into: &carrier, using: injector)
+
+        #expect(carrier.headers["tracestate"] != nil)
+
+        var extracted = ServiceContext.topLevel
+        bridge.extract(carrier, into: &extracted, using: extractor)
+
+        let result = extracted.otelSpanContext!
+        let entries = result.traceState.entries
+        #expect(entries.contains { $0.key == "vendor1" && $0.value == "value1" })
+        #expect(entries.contains { $0.key == "vendor2" && $0.value == "value2" })
+    }
+
+    @Test("Invalid traceparent is ignored")
+    func invalidTraceparent() {
+        let carrier = DictCarrier(headers: ["traceparent": "garbage"])
+
+        var ctx = ServiceContext.topLevel
+        bridge.extract(carrier, into: &ctx, using: extractor)
+
+        #expect(ctx.otelSpanContext == nil)
+    }
+
+    @Test("Missing traceparent leaves context unchanged")
+    func missingTraceparent() {
+        let carrier = DictCarrier()
+
+        var ctx = ServiceContext.topLevel
+        bridge.extract(carrier, into: &ctx, using: extractor)
+
+        #expect(ctx.otelSpanContext == nil)
     }
 }
