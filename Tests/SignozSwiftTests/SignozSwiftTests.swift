@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import OpenTelemetryApi
 import OpenTelemetrySdk
@@ -582,6 +583,66 @@ struct IntegrationTests {
             ])
         }
     }
+
+    @Test("Exported telemetry is received by collector")
+    func verifyCollectorReceivesTelemetry() throws {
+        // Skip if the collector container isn't running
+        guard collectorIsRunning() else {
+            return  // Collector not running — skip gracefully
+        }
+
+        Signoz.start(serviceName: "signoz-swift-verify-test") {
+            $0.spanProcessing = .simple
+            $0.autoInstrumentation.metricsShim = false
+        }
+
+        span("verify.collector", kind: .internal) { s in
+            s.setAttribute(key: "test.marker", value: "collector-check")
+        }
+        info("verify collector log", attributes: ["marker": "collector-check"])
+
+        Signoz.shutdown()
+
+        // Give the collector a moment to process
+        Thread.sleep(forTimeInterval: 1.0)
+
+        // Read collector debug output to verify telemetry was received
+        let logs = dockerLogs(container: "otel-collector")
+        #expect(
+            logs.contains("verify.collector"),
+            "Expected span 'verify.collector' in collector debug output"
+        )
+        #expect(
+            logs.contains("verify collector log"),
+            "Expected log 'verify collector log' in collector debug output"
+        )
+    }
+}
+
+// MARK: - Docker Helpers (for collector verification)
+
+/// Check if the otel-collector container is running.
+private func collectorIsRunning() -> Bool {
+    let output = shell("docker", "inspect", "-f", "{{.State.Running}}", "otel-collector")
+    return output.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+}
+
+/// Get logs from a Docker container (combined stdout + stderr).
+private func dockerLogs(container: String) -> String {
+    shell("docker", "logs", container)
+}
+
+/// Run a shell command and return its combined output.
+private func shell(_ args: String...) -> String {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = args
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = pipe
+    try? process.run()
+    process.waitUntilExit()
+    return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
 }
 
 // MARK: - W3C Trace Context Propagation Tests

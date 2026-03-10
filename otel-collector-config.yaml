@@ -5,7 +5,8 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 exporters:
-  debug: {}
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:

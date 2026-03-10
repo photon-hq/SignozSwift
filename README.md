@@ -309,9 +309,11 @@ Start the collector with Docker:
 ```bash
 docker run -d --name otel-collector \
   -p 4317:4317 \
-  -v $(pwd)/otel-collector-config.yaml:/etc/otelcol/config.yaml \
-  otel/opentelemetry-collector:latest
+  -v $(pwd)/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml \
+  otel/opentelemetry-collector-contrib:latest
 ```
+
+The collector's debug exporter logs all received telemetry. One integration test reads `docker logs` to verify spans and logs were actually received end-to-end.
 
 Then run tests:
 
