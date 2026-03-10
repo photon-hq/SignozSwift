@@ -75,7 +75,14 @@ public struct SignozTracingMiddleware: AsyncMiddleware {
                 span.name = "\(method) \(pattern)"
                 span.setAttribute(key: "http.route", value: .string(pattern))
             }
-            span.status = .error(description: "\(error)")
+            if let abort = error as? AbortError {
+                let status = abort.status
+                span.setAttribute(key: "http.status_code", value: .int(Int(status.code)))
+                span.status = .error(description: "\(status)")
+            } else {
+                span.setAttribute(key: "http.status_code", value: .int(500))
+                span.status = .error(description: String(describing: type(of: error)))
+            }
             span.end()
             throw error
         }
