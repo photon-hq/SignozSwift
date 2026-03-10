@@ -305,7 +305,7 @@ let attrs: [String: AttributeValue] = [
 SignozSwift wraps the official OpenTelemetry Swift SDK — it does not reinvent any OTel types.
 
 - **[opentelemetry-swift-core](https://github.com/open-telemetry/opentelemetry-swift-core) 2.3.0** — `OpenTelemetryApi`, `OpenTelemetrySdk`
-- **[opentelemetry-swift](https://github.com/open-telemetry/opentelemetry-swift) 3.0.0** — OTLP proto adapters, URLSession instrumentation, ResourceExtension, SignPost integration, SwiftMetricsShim
+- **[opentelemetry-swift](https://github.com/photon-hq/opentelemetry-swift) 3.0.0** — OTLP proto adapters, URLSession instrumentation, ResourceExtension, SignPost integration, SwiftMetricsShim
 - **[grpc-swift-2](https://github.com/grpc/grpc-swift-2) 2.2.1** — gRPC transport (v2, async/await)
 - **[grpc-swift-extras](https://github.com/grpc/grpc-swift-extras) 2.1.1** — OTel tracing interceptors for automatic gRPC span injection
 - **[Rainbow](https://github.com/onevcat/Rainbow) 4.x** — Colored console output
