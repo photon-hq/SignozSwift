@@ -107,6 +107,13 @@ let package = Package(
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
                 .product(name: "InMemoryExporter", package: "opentelemetry-swift"),
                 .product(name: "Instrumentation", package: "swift-distributed-tracing"),
+                .product(name: "GRPCCore", package: "grpc-swift-2"),
+                .product(name: "GRPCInProcessTransport", package: "grpc-swift-2"),
+            ],
+            swiftSettings: [
+                .enableExperimentalFeature(
+                    "AvailabilityMacro=gRPCSwift 2.0:macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0"
+                ),
             ]
         ),
     ]

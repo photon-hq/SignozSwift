@@ -5,6 +5,8 @@ import OpenTelemetrySdk
 import InMemoryExporter
 import Instrumentation
 import ServiceContextModule
+import GRPCCore
+import GRPCInProcessTransport
 @testable import SignozSwift
 
 // MARK: - Configuration Tests
@@ -584,6 +586,67 @@ struct IntegrationTests {
         }
     }
 
+    @Test("gRPC auto-tracing creates client and server spans")
+    func grpcAutoTracing() async throws {
+        guard collectorIsRunning() else { return }
+
+        Signoz.start(serviceName: "signoz-grpc-test") {
+            $0.spanProcessing = .simple
+            $0.autoInstrumentation.metricsShim = false
+        }
+
+        let inProcess = InProcessTransport()
+
+        try await withGRPCServer(
+            transport: inProcess.server,
+            services: [EchoService()],
+            interceptors: [ServerOTelTracingInterceptor(
+                serverHostname: "in-process",
+                networkTransportMethod: "in-process"
+            )]
+        ) { _ in
+            try await withGRPCClient(
+                transport: inProcess.client,
+                interceptors: [ClientOTelTracingInterceptor(
+                    serverHostname: "in-process",
+                    networkTransportMethod: "in-process"
+                )]
+            ) { client in
+                let response = try await client.unary(
+                    request: ClientRequest(message: "hello from test"),
+                    descriptor: .echo,
+                    serializer: StringSerializer(),
+                    deserializer: StringDeserializer(),
+                    options: .defaults
+                ) { try $0.message }
+
+                #expect(response == "echo: hello from test")
+            }
+        }
+
+        Signoz.shutdown()
+
+        // Give the collector a moment to process
+        try await Task.sleep(for: .seconds(1))
+
+        let logs = dockerLogs(container: "otel-collector")
+        // Both client and server spans use the fully-qualified method name
+        #expect(
+            logs.contains("test.EchoService/Echo"),
+            "Expected gRPC span in collector output"
+        )
+        // Interceptors set rpc.system attribute
+        #expect(
+            logs.contains("rpc.system"),
+            "Expected rpc.system attribute in collector output"
+        )
+        // Log emitted inside the gRPC handler (auto-linked to span via traceId/spanId)
+        #expect(
+            logs.contains("echo handler called"),
+            "Expected handler log in collector output"
+        )
+    }
+
     @Test("Exported telemetry is received by collector")
     func verifyCollectorReceivesTelemetry() throws {
         // Skip if the collector container isn't running
@@ -627,9 +690,9 @@ private func collectorIsRunning() -> Bool {
     return output.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
 }
 
-/// Get logs from a Docker container (combined stdout + stderr).
+/// Get logs from a Docker container (last 500 lines of combined stdout + stderr).
 private func dockerLogs(container: String) -> String {
-    shell("docker", "logs", container)
+    shell("docker", "logs", "--tail", "500", container)
 }
 
 /// Run a shell command and return its combined output.
@@ -641,8 +704,47 @@ private func shell(_ args: String...) -> String {
     process.standardOutput = pipe
     process.standardError = pipe
     try? process.run()
+    // Read before waitUntilExit to avoid pipe-buffer deadlock
+    // when output exceeds 64 KB.
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
     process.waitUntilExit()
-    return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    return String(data: data, encoding: .utf8) ?? ""
+}
+
+// MARK: - gRPC Echo Service (for auto-tracing test)
+
+@available(gRPCSwift 2.0, *)
+private extension MethodDescriptor {
+    static let echo = Self(fullyQualifiedService: "test.EchoService", method: "Echo")
+}
+
+@available(gRPCSwift 2.0, *)
+private struct StringSerializer: MessageSerializer {
+    func serialize<Bytes: GRPCContiguousBytes>(_ message: String) throws -> Bytes {
+        Bytes(message.utf8)
+    }
+}
+
+@available(gRPCSwift 2.0, *)
+private struct StringDeserializer: MessageDeserializer {
+    func deserialize<Bytes: GRPCContiguousBytes>(_ bytes: Bytes) throws -> String {
+        bytes.withUnsafeBytes { String(decoding: $0, as: UTF8.self) }
+    }
+}
+
+@available(gRPCSwift 2.0, *)
+private struct EchoService: RegistrableRPCService {
+    func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
+        router.registerHandler(
+            forMethod: .echo,
+            deserializer: StringDeserializer(),
+            serializer: StringSerializer()
+        ) { request, _ in
+            let message = try await request.messages.reduce(into: "") { $0 += $1 }
+            info("echo handler called", attributes: ["rpc.request": .string(message)])
+            return StreamingServerResponse(single: ServerResponse(message: "echo: \(message)"))
+        }
+    }
 }
 
 // MARK: - W3C Trace Context Propagation Tests
