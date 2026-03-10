@@ -12,12 +12,12 @@ dependencies: [
 ]
 ```
 
-Then add `"SignozSwift"` to your target's dependencies:
+Then add `"SignozSwift"` to your target's dependencies (or `"SignozVapor"` for Vapor projects):
 
 ```swift
 .target(
     name: "MyApp",
-    dependencies: ["SignozSwift"]
+    dependencies: ["SignozSwift"]      // or "SignozVapor" for Vapor apps
 ),
 ```
 
@@ -47,9 +47,10 @@ info("Request handled", attributes: ["status": 200])
 
 ### Vapor HTTP Backend
 
+Add `"SignozVapor"` to your target's dependencies instead of `"SignozSwift"` — it re-exports everything from `SignozSwift` plus the tracing middleware:
+
 ```swift
-import SignozSwift
-import Vapor
+import SignozVapor
 
 func configure(_ app: Application) throws {
     Signoz.start(serviceName: "my-vapor-api") {
@@ -58,21 +59,23 @@ func configure(_ app: Application) throws {
         $0.headers = ["signoz-ingestion-key": "..."]
         $0.environment = "production"
         $0.serviceVersion = "1.0.0"
-        // Vapor's HTTP metrics (http_requests_total, http_request_duration_seconds)
-        // are automatically exported via the swift-metrics bridge. Zero extra code.
     }
 
+    // Automatic request tracing — creates a .server span for every HTTP request
+    // with OTel semantic convention attributes and W3C trace context propagation
+    app.middleware.use(SignozTracingMiddleware())
+
     app.get("users") { req async throws -> [User] in
-        try await span("GET /users", kind: .server) { s in
-            s.setAttribute(key: "http.method", value: "GET")
-            return try await db.fetchUsers()
-        }
+        // Spans created here are automatically nested under the request span
+        try await db.fetchUsers()
     }
 }
 
 // In entrypoint:
 defer { Signoz.shutdown() }
 ```
+
+`SignozTracingMiddleware` sets `http.method`, `http.target`, `http.scheme`, `http.status_code`, and `http.route` on each span. Span names use the matched route pattern (e.g. `GET /users/:id`) when available. Vapor's HTTP metrics (`http_requests_total`, `http_request_duration_seconds`) are also automatically exported via the swift-metrics bridge.
 
 ### ArgumentParser CLI
 
