@@ -145,7 +145,7 @@ struct MyApp: App {
 Signoz.start(serviceName: "my-app") { config in
     config.endpoint = "localhost:4317"  // default
     config.environment = "production"                 // deployment.environment
-    config.hostName = .auto                             // host.name (system hostname)
+    config.hostName = .auto                             // host.name (short system hostname, domain suffix stripped)
     config.hostName = .custom("web-01")                 // host.name (explicit value)
     // config.hostName = .none                           // omit host.name (default)
     config.serviceVersion = "1.0.0"
@@ -274,7 +274,7 @@ let attrs: [String: AttributeValue] = [
 | `serviceName` | `String` | *required* | Service name (`service.name`) |
 | `serviceVersion` | `String` | `""` | Service version (`service.version`) |
 | `environment` | `String` | `""` | Deployment environment (`deployment.environment`) |
-| `hostName` | `.none` \| `.auto` \| `.custom(String)` | `.none` | Host name (`host.name`). `.none` omits the attribute, `.auto` uses the system hostname, `.custom("...")` uses an explicit value. |
+| `hostName` | `.none` \| `.auto` \| `.custom(String)` | `.none` | Host name (`host.name`). `.none` omits the attribute, `.auto` uses the short system hostname (strips domain suffixes like `.local`), `.custom("...")` uses an explicit value. |
 | `resourceAttributes` | `[String: AttributeValue]` | `[:]` | Extra resource attributes |
 | `headers` | `[String: String]` | `[:]` | gRPC metadata headers |
 | `transportSecurity` | `.plaintext` \| `.tls` | `.plaintext` | Transport security mode |

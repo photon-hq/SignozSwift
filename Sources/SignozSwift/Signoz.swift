@@ -165,7 +165,9 @@ public enum Signoz {
         case .none:
             break
         case .auto:
-            attrs["host.name"] = .string(ProcessInfo.processInfo.hostName)
+            let raw = ProcessInfo.processInfo.hostName
+            let short = raw.split(separator: ".", maxSplits: 1).first.map(String.init) ?? raw
+            attrs["host.name"] = .string(short)
         case .custom(let value):
             attrs["host.name"] = .string(value)
         }
