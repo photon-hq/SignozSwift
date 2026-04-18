@@ -24,7 +24,7 @@ public struct Configuration: Sendable {
 
     /// Host name strategy for the `host.name` resource attribute.
     /// - `.none` — attribute is omitted (default).
-    /// - `.auto` — uses the system hostname at runtime.
+    /// - `.auto` — uses the short system hostname at runtime (strips domain suffixes like `.local`, `.localdomain`).
     /// - `.custom("value")` — uses the provided string.
     public var hostName: HostName = .none
 
@@ -67,7 +67,7 @@ public struct Configuration: Sendable {
     public enum HostName: Sendable, Equatable, ExpressibleByStringLiteral {
         /// Do not include the `host.name` resource attribute.
         case none
-        /// Use the system hostname (`ProcessInfo.processInfo.hostName`).
+        /// Use the short system hostname (domain suffixes like `.local` stripped).
         case auto
         /// Use a custom hostname value.
         case custom(String)
