@@ -9,6 +9,7 @@ jobs:
     uses: photon-hq/buildspace/.github/workflows/release.yaml@main
     with:
       service-name: SignozSwift
+      use-blacksmith: true
     permissions:
         contents: write
         pull-requests: read
