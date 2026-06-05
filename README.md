@@ -279,7 +279,7 @@ let attrs: [String: AttributeValue] = [
 | `headers` | `[String: String]` | `[:]` | gRPC metadata headers |
 | `transportSecurity` | `.plaintext` \| `.tls` | `.plaintext` | Transport security mode |
 | `spanProcessing` | `.simple` \| `.batch(...)` | `.batch()` | Span processing strategy |
-| `localPersistencePath` | `URL?` | `nil` | Directory for on-disk telemetry backup. When set, spans and logs are exported to the network immediately **and** written to disk independently. Persisted data is retried by a background worker if the live export fails. |
+| `localPersistencePath` | `URL?` | `nil` | Directory for a durable on-disk telemetry queue. When set, traces, logs, and metrics are buffered to disk and forwarded to the OTLP collector **from disk**. If the collector is unreachable the data is retained and replayed once connectivity resumes, so nothing is lost across a network outage. The directory (and its per-signal `traces`/`logs`/`metrics` subdirectories) is created automatically and stays near-empty in normal operation — it only accumulates files during an outage. |
 | `consoleLog` | `.auto` \| `.enabled` \| `.disabled` | `.auto` | Colored console output to stderr. `.auto` enables in DEBUG builds only, `.enabled` always prints, `.disabled` never prints. |
 | `autoInstrumentation` | `AutoInstrumentation` | see below | Auto-instrumentation toggles |
 
