@@ -3,6 +3,7 @@ import Testing
 import OpenTelemetryApi
 import OpenTelemetrySdk
 import InMemoryExporter
+import PersistenceExporter
 import Instrumentation
 import ServiceContextModule
 import GRPCCore
@@ -416,6 +417,76 @@ struct SignozDefaultTests {
             .setBody(.string("test"))
             .emit()
     }
+}
+
+// MARK: - Persistence Tests (no collector required)
+
+@Suite("Persistence")
+struct PersistenceTests {
+
+    /// Emit one span through a provider whose only exporter is `exporter`, then force-flush
+    /// so the span is driven to disk and back out. Does NOT shut the provider down — callers
+    /// must read results first, because `InMemoryExporter.shutdown()` clears collected spans.
+    private func emitOneSpan(through exporter: any SpanExporter) {
+        let provider = TracerProviderBuilder()
+            .add(spanProcessor: SimpleSpanProcessor(spanExporter: exporter))
+            .build()
+        let tracer = provider.get(instrumentationName: "persistence-test", instrumentationVersion: nil)
+        tracer.spanBuilder(spanName: "disk-roundtrip").startSpan().end()
+        provider.forceFlush(timeout: 5)
+    }
+
+    @Test("Creates the subdirectory and forwards spans from disk on success")
+    func forwardsFromDiskOnSuccess() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("signoz-persist-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // The helper must create the leaf even though `root` does not exist yet — this is
+        // the bug fix: without it, every persistence write silently no-ops.
+        let tracesURL = try Signoz.makePersistenceDir(root, "traces")
+        #expect(FileManager.default.fileExists(atPath: tracesURL.path))
+
+        let inMemory = InMemoryExporter()
+        let decorator = try PersistenceSpanExporterDecorator(
+            spanExporter: inMemory,
+            storageURL: tracesURL
+        )
+
+        emitOneSpan(through: decorator)
+
+        // Span was forwarded from disk to the wrapped exporter...
+        #expect(inMemory.getFinishedSpanItems().count == 1)
+        // ...and the on-disk file was removed once delivery succeeded.
+        let remaining = try FileManager.default.contentsOfDirectory(atPath: tracesURL.path)
+        #expect(remaining.isEmpty)
+    }
+
+    @Test("Retains files on disk when export fails (outage queue)")
+    func retainsFilesOnFailure() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("signoz-persist-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let tracesURL = try Signoz.makePersistenceDir(root, "traces")
+        let decorator = try PersistenceSpanExporterDecorator(
+            spanExporter: FailingSpanExporter(),
+            storageURL: tracesURL
+        )
+
+        emitOneSpan(through: decorator)
+
+        // Export failed → the batch is kept on disk for replay once connectivity resumes.
+        let remaining = try FileManager.default.contentsOfDirectory(atPath: tracesURL.path)
+        #expect(!remaining.isEmpty)
+    }
+}
+
+/// A span exporter that always reports failure, to exercise the retain-on-failure path.
+private final class FailingSpanExporter: SpanExporter {
+    func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .failure }
+    func flush(explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .failure }
+    func shutdown(explicitTimeout: TimeInterval?) {}
 }
 
 // MARK: - Integration Tests (sends real telemetry to SigNoz)

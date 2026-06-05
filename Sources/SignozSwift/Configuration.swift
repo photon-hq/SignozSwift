@@ -52,12 +52,15 @@ public struct Configuration: Sendable {
 
     /// Optional local directory path for persisting telemetry data.
     ///
-    /// When set, traces, logs, and metrics are written to disk in addition
-    /// to being exported over the network. This ensures telemetry survives
-    /// network outages — the persistence layer queues data locally and
-    /// forwards it to the OTLP exporter when connectivity resumes.
+    /// When set, traces, logs, and metrics are buffered to disk and forwarded
+    /// to the OTLP collector from disk. If the collector is unreachable, the data
+    /// is retained on disk and replayed once connectivity resumes, so telemetry
+    /// survives network outages and nothing is lost. In normal operation the
+    /// directory stays near-empty because delivered data is removed; it only
+    /// accumulates files during an outage.
     ///
-    /// The directory is created automatically if it doesn't exist.
+    /// The directory and its per-signal `traces`/`logs`/`metrics` subdirectories
+    /// are created automatically if they don't exist.
     ///
     /// Set to `nil` (default) to disable local persistence.
     public var localPersistencePath: URL? = nil
