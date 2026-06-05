@@ -53,6 +53,7 @@ public enum Signoz {
     nonisolated(unsafe) private static var _clientTask: Task<Void, Never>?
     nonisolated(unsafe) private static var _tracerProvider: TracerProviderSdk?
     nonisolated(unsafe) private static var _logProcessor: (any LogRecordProcessor)?
+    nonisolated(unsafe) private static var _meterProvider: MeterProviderSdk?
 
     nonisolated(unsafe) private static var _consoleLogEnabled: Bool = false
     nonisolated(unsafe) private static var _instrumentationBootstrapped: Bool = false
@@ -211,14 +212,14 @@ public enum Signoz {
         let traceExporter: any SpanExporter
         if let persistenceURL {
             do {
-                // Fanout: OTLP exporter sends directly to network; file-only persistence exporter
-                // writes to disk independently for crash recovery. This ensures spans reach Signoz
-                // immediately (even in short-lived CLIs) while still persisting locally.
-                let fileOnlyExporter = try PersistenceSpanExporterDecorator(
-                    spanExporter: NoopSpanExporter(),
-                    storageURL: persistenceURL.appendingPathComponent("traces")
+                // Durable queue: spans are written to disk and forwarded to SigNoz from disk.
+                // On a network outage the files are retained and replayed once the collector is
+                // reachable again, so nothing is lost.
+                let tracesURL = try makePersistenceDir(persistenceURL, "traces")
+                traceExporter = try PersistenceSpanExporterDecorator(
+                    spanExporter: otlpTraceExporter,
+                    storageURL: tracesURL
                 )
-                traceExporter = MultiSpanExporter(spanExporters: [otlpTraceExporter, fileOnlyExporter])
             } catch {
                 fputs("SignozSwift: failed to set up trace persistence: \(error). Using network-only export.\n", stdErr)
                 traceExporter = otlpTraceExporter
@@ -271,11 +272,11 @@ public enum Signoz {
         let logExporter: any LogRecordExporter
         if let persistenceURL {
             do {
-                let fileOnlyExporter = try PersistenceLogExporterDecorator(
-                    logRecordExporter: NoopLogRecordExporter(),
-                    storageURL: persistenceURL.appendingPathComponent("logs")
+                let logsURL = try makePersistenceDir(persistenceURL, "logs")
+                logExporter = try PersistenceLogExporterDecorator(
+                    logRecordExporter: otlpLogExporter,
+                    storageURL: logsURL
                 )
-                logExporter = MultiLogRecordExporter(logRecordExporters: [otlpLogExporter, fileOnlyExporter])
             } catch {
                 fputs("SignozSwift: failed to set up log persistence: \(error). Using network-only export.\n", stdErr)
                 logExporter = otlpLogExporter
@@ -291,14 +292,16 @@ public enum Signoz {
         OpenTelemetry.registerLoggerProvider(loggerProvider: loggerProvider)
 
         // 8. Metrics shim (bridges swift-metrics → OTel → OTLP)
+        var builtMeterProvider: MeterProviderSdk? = nil
         if config.autoInstrumentation.metricsShim {
             var metricExporter: any MetricExporter = GrpcMetricExporter(
                 client: client, headers: otlpHeaders, timeout: otlpTimeout)
             if let persistenceURL {
                 do {
+                    let metricsURL = try makePersistenceDir(persistenceURL, "metrics")
                     metricExporter = try PersistenceMetricExporterDecorator(
                         metricExporter: metricExporter,
-                        storageURL: persistenceURL.appendingPathComponent("metrics")
+                        storageURL: metricsURL
                     )
                 } catch {
                     fputs("SignozSwift: failed to set up metric persistence: \(error). Using network-only export.\n", stdErr)
@@ -313,6 +316,7 @@ public enum Signoz {
                 .build()
 
             OpenTelemetry.registerMeterProvider(meterProvider: meterProvider)
+            builtMeterProvider = meterProvider
 
             let meter = meterProvider.meterBuilder(name: "SwiftMetrics").build()
             MetricsSystem.bootstrap(
@@ -343,6 +347,7 @@ public enum Signoz {
         _clientTask = clientTask
         _tracerProvider = tracerProvider
         _logProcessor = logProcessor
+        _meterProvider = builtMeterProvider
         switch config.consoleLog {
         case .auto:
             #if DEBUG
@@ -368,6 +373,7 @@ public enum Signoz {
         let clientTask = _clientTask
         let tracerProvider = _tracerProvider
         let logProcessor = _logProcessor
+        let meterProvider = _meterProvider
         _tracer = nil
         _logger = nil
         _client = nil
@@ -375,6 +381,7 @@ public enum Signoz {
         _clientTask = nil
         _tracerProvider = nil
         _logProcessor = nil
+        _meterProvider = nil
         _consoleLogEnabled = false
         lock.unlock()
 
@@ -383,6 +390,8 @@ public enum Signoz {
         tracerProvider?.shutdown()
         _ = logProcessor?.forceFlush(explicitTimeout: 10)
         _ = logProcessor?.shutdown()
+        _ = meterProvider?.forceFlush()
+        _ = meterProvider?.shutdown()
 
         clientShutdown?()
         if let clientTask {
@@ -400,24 +409,23 @@ public enum Signoz {
             drainTask.cancel()
         }
     }
+
+    /// Create a per-signal subdirectory (e.g. `traces`/`logs`/`metrics`) under the
+    /// persistence root and return its URL.
+    ///
+    /// The opentelemetry-swift `PersistenceExporter` uses `Directory(url:)`, which does
+    /// NOT create the directory, and its file writer swallows write errors — so each
+    /// subdirectory must exist up front or every persistence write silently no-ops.
+    static func makePersistenceDir(_ root: URL, _ name: String) throws -> URL {
+        let url = root.appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
 }
 
-// MARK: - Private noop exporters
+// MARK: - Persistence
 
-/// A span exporter that does nothing. Used as the wrapped exporter inside
-/// `PersistenceSpanExporterDecorator` so that the persistence layer only writes
-/// to disk — the actual network export is handled by the direct OTLP exporter
-/// in the `MultiSpanExporter` fanout.
-private class NoopSpanExporter: SpanExporter {
-    func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .success }
-    func flush(explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .success }
-    func shutdown(explicitTimeout: TimeInterval?) {}
-}
-
-/// A log record exporter that does nothing. Used as the wrapped exporter inside
-/// `PersistenceLogExporterDecorator` for the same reason as `NoopSpanExporter`.
-private struct NoopLogRecordExporter: LogRecordExporter {
-    func export(logRecords: [ReadableLogRecord], explicitTimeout: TimeInterval?) -> ExportResult { .success }
-    func forceFlush(explicitTimeout: TimeInterval?) -> ExportResult { .success }
-    func shutdown(explicitTimeout: TimeInterval?) {}
-}
+// Telemetry persistence wraps the real OTLP exporters in the opentelemetry-swift
+// `Persistence*ExporterDecorator`s (see `start(serviceName:_:)`), which buffer each
+// signal to `<localPersistencePath>/{traces,logs,metrics}` and forward from disk —
+// retaining and replaying data across network outages. No no-op exporters are needed.
