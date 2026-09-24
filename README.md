@@ -348,3 +348,15 @@ docker stop otel-collector
 ## License
 
 MIT
+
+## Background log export
+
+Log export runs on OpenTelemetry's batch worker so a slow collector does not
+hold up the logging caller. The processor uses a 5-second schedule delay, a
+2,048-record pending queue, batches of up to 512 records, and the existing
+30-second export timeout. New records are dropped when the pending queue is
+full. Records retain their original timestamps, attributes, and trace context.
+
+Call `Signoz.shutdown()` before exiting to flush queued logs. Shutdown can wait
+for exports; this change isolates normal log calls and does not establish an
+overall shutdown deadline. Console output and disk forwarding are unchanged.

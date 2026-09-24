@@ -284,7 +284,7 @@ public enum Signoz {
         } else {
             logExporter = otlpLogExporter
         }
-        let logProcessor = SimpleLogRecordProcessor(logRecordExporter: logExporter)
+        let logProcessor = makeLogProcessor(exporter: logExporter)
         let loggerProvider = LoggerProviderBuilder()
             .with(processors: [logProcessor])
             .with(resource: resource)
@@ -408,6 +408,10 @@ public enum Signoz {
 
             drainTask.cancel()
         }
+    }
+
+    static func makeLogProcessor(exporter: any LogRecordExporter) -> any LogRecordProcessor {
+        BatchLogRecordProcessor(logRecordExporter: exporter)
     }
 
     /// Create a per-signal subdirectory (e.g. `traces`/`logs`/`metrics`) under the
