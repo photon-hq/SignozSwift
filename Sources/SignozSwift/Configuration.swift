@@ -53,11 +53,14 @@ public struct Configuration: Sendable {
     /// Optional local directory path for persisting telemetry data.
     ///
     /// When set, traces, logs, and metrics are buffered to disk and forwarded
-    /// to the OTLP collector from disk. If the collector is unreachable, the data
-    /// is retained on disk and replayed once connectivity resumes, so telemetry
-    /// survives network outages and nothing is lost. In normal operation the
-    /// directory stays near-empty because delivered data is removed; it only
-    /// accumulates files during an outage.
+    /// to the OTLP collector from disk. Only records that reach the on-disk queue
+    /// can be retained and replayed once connectivity resumes.
+    ///
+    /// Logs first enter an in-memory batch queue, which drops new records when
+    /// full. Records still in memory can be lost if the process exits without
+    /// calling ``Signoz/shutdown()``. Enabling persistence does not bypass this
+    /// queue. In normal operation the directory stays near-empty because
+    /// delivered data is removed; it accumulates files during an outage.
     ///
     /// The directory and its per-signal `traces`/`logs`/`metrics` subdirectories
     /// are created automatically if they don't exist.
