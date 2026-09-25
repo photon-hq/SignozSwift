@@ -279,7 +279,7 @@ let attrs: [String: AttributeValue] = [
 | `headers` | `[String: String]` | `[:]` | gRPC metadata headers |
 | `transportSecurity` | `.plaintext` \| `.tls` | `.plaintext` | Transport security mode |
 | `spanProcessing` | `.simple` \| `.batch(...)` | `.batch()` | Span processing strategy |
-| `localPersistencePath` | `URL?` | `nil` | Directory for a durable on-disk telemetry queue. When set, traces, logs, and metrics are buffered to disk and forwarded to the OTLP collector **from disk**. If the collector is unreachable the data is retained and replayed once connectivity resumes, so nothing is lost across a network outage. The directory (and its per-signal `traces`/`logs`/`metrics` subdirectories) is created automatically and stays near-empty in normal operation — it only accumulates files during an outage. |
+| `localPersistencePath` | `URL?` | `nil` | Directory for an on-disk telemetry queue. When set, traces, logs, and metrics are buffered to disk and forwarded to the OTLP collector **from disk**. Only records that reach the on-disk queue can be retained and replayed once connectivity resumes. Logs first enter an in-memory batch queue, which drops new records when full; records still in memory can be lost if the process exits without `Signoz.shutdown()`. The directory (and its per-signal `traces`/`logs`/`metrics` subdirectories) is created automatically and stays near-empty in normal operation — it accumulates files during an outage. |
 | `consoleLog` | `.auto` \| `.enabled` \| `.disabled` | `.auto` | Colored console output to stderr. `.auto` enables in DEBUG builds only, `.enabled` always prints, `.disabled` never prints. |
 | `autoInstrumentation` | `AutoInstrumentation` | see below | Auto-instrumentation toggles |
 
@@ -356,6 +356,9 @@ hold up the logging caller. The processor uses a 5-second schedule delay, a
 2,048-record pending queue, batches of up to 512 records, and the existing
 30-second export timeout. New records are dropped when the pending queue is
 full. Records retain their original timestamps, attributes, and trace context.
+With `localPersistencePath` enabled, logs reach disk only after the batch worker
+passes them to the persistence exporter. Records still in memory are not covered
+by disk persistence and can be lost if the process exits without flushing.
 
 Call `Signoz.shutdown()` before exiting to flush queued logs. Shutdown can wait
 for exports; this change isolates normal log calls and does not establish an

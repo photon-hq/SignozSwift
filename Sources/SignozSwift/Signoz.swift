@@ -214,7 +214,7 @@ public enum Signoz {
             do {
                 // Durable queue: spans are written to disk and forwarded to SigNoz from disk.
                 // On a network outage the files are retained and replayed once the collector is
-                // reachable again, so nothing is lost.
+                // reachable again; this applies only to records that reach disk.
                 let tracesURL = try makePersistenceDir(persistenceURL, "traces")
                 traceExporter = try PersistenceSpanExporterDecorator(
                     spanExporter: otlpTraceExporter,
@@ -410,6 +410,7 @@ public enum Signoz {
         }
     }
 
+    /// Enqueues logs in memory before export, including before any persistence write.
     static func makeLogProcessor(exporter: any LogRecordExporter) -> any LogRecordProcessor {
         BatchLogRecordProcessor(logRecordExporter: exporter)
     }
