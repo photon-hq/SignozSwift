@@ -363,3 +363,15 @@ by disk persistence and can be lost if the process exits without flushing.
 Call `Signoz.shutdown()` before exiting to flush queued logs. Shutdown can wait
 for exports; this change isolates normal log calls and does not establish an
 overall shutdown deadline. Console output and disk forwarding are unchanged.
+
+## Collector reconnects
+
+grpc-swift only sends on a connection once the server finishes the TLS and
+HTTP/2 handshakes, and it puts no time limit on them. If a handshake stalls
+while the TCP connection stays open, every export waits behind that connection
+until its 30-second deadline and the client never dials again. To recover,
+SignozSwift replaces the gRPC client when three exports in a row get no answer
+from the collector (`unavailable`, `deadlineExceeded`, or cancelled). It does
+this at most once a minute and prints a line to stderr each time. Errors the
+collector answers with, such as `invalidArgument`, do not count. A success
+resets the count.
