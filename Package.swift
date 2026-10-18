@@ -124,6 +124,7 @@ let package = Package(
                 .product(name: "Instrumentation", package: "swift-distributed-tracing"),
                 .product(name: "GRPCCore", package: "grpc-swift-2"),
                 .product(name: "GRPCInProcessTransport", package: "grpc-swift-2"),
+                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
             ],
             swiftSettings: [
                 .enableExperimentalFeature(

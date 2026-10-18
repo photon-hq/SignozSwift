@@ -10,10 +10,10 @@ import SwiftMetricsShim
 import Tracing
 
 #if canImport(Darwin)
-nonisolated(unsafe) private let stdErr = stderr
+nonisolated(unsafe) let stdErr = stderr
 #elseif canImport(Glibc)
 import Glibc
-nonisolated(unsafe) private let stdErr = fdopen(STDERR_FILENO, "w")!
+nonisolated(unsafe) let stdErr = fdopen(STDERR_FILENO, "w")!
 #endif
 
 #if canImport(ResourceExtension)
@@ -48,9 +48,7 @@ public enum Signoz {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var _tracer: (any OpenTelemetryApi.Tracer)?
     nonisolated(unsafe) private static var _logger: (any Logger)?
-    nonisolated(unsafe) private static var _client: (any GrpcExportClient)?
-    nonisolated(unsafe) private static var _clientShutdown: (@Sendable () -> Void)?
-    nonisolated(unsafe) private static var _clientTask: Task<Void, Never>?
+    nonisolated(unsafe) private static var _client: ReconnectingExportClient?
     nonisolated(unsafe) private static var _tracerProvider: TracerProviderSdk?
     nonisolated(unsafe) private static var _logProcessor: (any LogRecordProcessor)?
     nonisolated(unsafe) private static var _meterProvider: MeterProviderSdk?
@@ -125,29 +123,14 @@ public enum Signoz {
         let (host, port) = config.parseEndpoint()
 
         // 1. gRPC client (v2)
-        let client: any GrpcExportClient
-        let clientShutdown: @Sendable () -> Void
-        let clientTask: Task<Void, Never>
+        let client: ReconnectingExportClient
         do {
             let transportSecurity: HTTP2ClientTransport.Posix.TransportSecurity =
                 config.transportSecurity == .tls ? .tls(.defaults) : .plaintext
-            let transport = try HTTP2ClientTransport.Posix(
-                target: .dns(host: host, port: port),
-                transportSecurity: transportSecurity
-            )
-            let grpcClient = GRPCClient(transport: transport)
-            clientTask = Task {
-                do {
-                    try await grpcClient.runConnections()
-                } catch is CancellationError {
-                    // Shutdown cancels the background connection loop after requesting a graceful drain.
-                } catch {
-                    guard !Task.isCancelled else { return }
-                    fputs("SignozSwift: gRPC client connection loop stopped: \(error).\n", stdErr)
-                }
+            client = try ReconnectingExportClient {
+                try ReconnectingExportClient.connect(
+                    host: host, port: port, transportSecurity: transportSecurity)
             }
-            clientShutdown = { grpcClient.beginGracefulShutdown() }
-            client = grpcClient
         } catch {
             fputs("SignozSwift: failed to create gRPC transport: \(error).\n", stdErr)
             return
@@ -343,8 +326,6 @@ public enum Signoz {
             .loggerBuilder(instrumentationScopeName: config.instrumentationName)
             .build()
         _client = client
-        _clientShutdown = clientShutdown
-        _clientTask = clientTask
         _tracerProvider = tracerProvider
         _logProcessor = logProcessor
         _meterProvider = builtMeterProvider
@@ -369,16 +350,13 @@ public enum Signoz {
     /// and metrics are exported.
     public static func shutdown() {
         lock.lock()
-        let clientShutdown = _clientShutdown
-        let clientTask = _clientTask
+        let client = _client
         let tracerProvider = _tracerProvider
         let logProcessor = _logProcessor
         let meterProvider = _meterProvider
         _tracer = nil
         _logger = nil
         _client = nil
-        _clientShutdown = nil
-        _clientTask = nil
         _tracerProvider = nil
         _logProcessor = nil
         _meterProvider = nil
@@ -393,17 +371,17 @@ public enum Signoz {
         _ = meterProvider?.forceFlush()
         _ = meterProvider?.shutdown()
 
-        clientShutdown?()
-        if let clientTask {
+        if let connection = client?.close() {
+            connection.beginShutdown()
             let semaphore = DispatchSemaphore(value: 0)
             let drainTask = Task.detached {
-                await clientTask.value
+                await connection.task.value
                 semaphore.signal()
             }
 
             let didDrain = semaphore.wait(timeout: .now() + .seconds(10)) == .success
             if !didDrain {
-                clientTask.cancel()
+                connection.task.cancel()
             }
 
             drainTask.cancel()
