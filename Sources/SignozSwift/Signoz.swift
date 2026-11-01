@@ -290,13 +290,7 @@ public enum Signoz {
                     fputs("SignozSwift: failed to set up metric persistence: \(error). Using network-only export.\n", stdErr)
                 }
             }
-            let metricReader = PeriodicMetricReaderBuilder(exporter: metricExporter)
-                .setInterval(timeInterval: 60)
-                .build()
-            let meterProvider = MeterProviderSdk.builder()
-                .registerMetricReader(reader: metricReader)
-                .setResource(resource: resource)
-                .build()
+            let meterProvider = makeMeterProvider(exporter: metricExporter, resource: resource)
 
             OpenTelemetry.registerMeterProvider(meterProvider: meterProvider)
             builtMeterProvider = meterProvider
@@ -403,6 +397,30 @@ public enum Signoz {
         let url = root.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    /// Build the meter provider that exports every instrument through `exporter`.
+    ///
+    /// opentelemetry-swift-core only stores measurements for instruments that match a
+    /// registered view: `ViewRegistry.findViews` never falls back to the default view
+    /// it builds. Without the catch-all view below, every counter, histogram and gauge
+    /// gets no storage and its measurements are dropped before export.
+    static func makeMeterProvider(
+        exporter: any MetricExporter,
+        resource: Resource,
+        exportInterval: TimeInterval = 60
+    ) -> MeterProviderSdk {
+        let reader = PeriodicMetricReaderBuilder(exporter: exporter)
+            .setInterval(timeInterval: exportInterval)
+            .build()
+        return MeterProviderSdk.builder()
+            .registerView(
+                selector: InstrumentSelector.builder().setInstrument(name: ".*").build(),
+                view: View.builder().build()
+            )
+            .registerMetricReader(reader: reader)
+            .setResource(resource: resource)
+            .build()
     }
 }
 
