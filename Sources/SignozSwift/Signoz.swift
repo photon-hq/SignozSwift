@@ -55,6 +55,8 @@ public enum Signoz {
 
     nonisolated(unsafe) private static var _consoleLogEnabled: Bool = false
     nonisolated(unsafe) private static var _instrumentationBootstrapped: Bool = false
+    nonisolated(unsafe) private static var _metricsBootstrapped: Bool = false
+    private static let _metricsBridge = OTelMetricsBridge()
 
     #if canImport(URLSessionInstrumentation)
     nonisolated(unsafe) private static var _urlSessionInstrumentation: URLSessionInstrumentation?
@@ -274,31 +276,38 @@ public enum Signoz {
             .build()
         OpenTelemetry.registerLoggerProvider(loggerProvider: loggerProvider)
 
-        // 8. Metrics shim (bridges swift-metrics → OTel → OTLP)
-        var builtMeterProvider: MeterProviderSdk? = nil
-        if config.autoInstrumentation.metricsShim {
-            var metricExporter: any MetricExporter = GrpcMetricExporter(
-                client: client, headers: otlpHeaders, timeout: otlpTimeout)
-            if let persistenceURL {
-                do {
-                    let metricsURL = try makePersistenceDir(persistenceURL, "metrics")
-                    metricExporter = try PersistenceMetricExporterDecorator(
-                        metricExporter: metricExporter,
-                        storageURL: metricsURL
-                    )
-                } catch {
-                    fputs("SignozSwift: failed to set up metric persistence: \(error). Using network-only export.\n", stdErr)
-                }
+        // 8. Metric exporter + MeterProvider
+        var metricExporter: any MetricExporter = GrpcMetricExporter(
+            client: client, headers: otlpHeaders, timeout: otlpTimeout)
+        if let persistenceURL {
+            do {
+                let metricsURL = try makePersistenceDir(persistenceURL, "metrics")
+                metricExporter = try PersistenceMetricExporterDecorator(
+                    metricExporter: metricExporter,
+                    storageURL: metricsURL
+                )
+            } catch {
+                fputs("SignozSwift: failed to set up metric persistence: \(error). Using network-only export.\n", stdErr)
             }
-            let meterProvider = makeMeterProvider(exporter: metricExporter, resource: resource)
+        }
+        let meterProvider = makeMeterProvider(exporter: metricExporter, resource: resource)
+        OpenTelemetry.registerMeterProvider(meterProvider: meterProvider)
 
-            OpenTelemetry.registerMeterProvider(meterProvider: meterProvider)
-            builtMeterProvider = meterProvider
-
+        // 8b. Metrics shim (bridges swift-metrics → OTel → OTLP)
+        //     Can only be bootstrapped once per process (precondition in MetricsSystem),
+        //     so bootstrap a delegating bridge once and swap its backing factory.
+        if config.autoInstrumentation.metricsShim {
             let meter = meterProvider.meterBuilder(name: "SwiftMetrics").build()
-            MetricsSystem.bootstrap(
-                OpenTelemetrySwiftMetrics(meter: meter)
-            )
+            _metricsBridge.setFactory(OpenTelemetrySwiftMetrics(meter: meter))
+            lock.lock()
+            let shouldBootstrapMetrics = !_metricsBootstrapped
+            if shouldBootstrapMetrics { _metricsBootstrapped = true }
+            lock.unlock()
+            if shouldBootstrapMetrics {
+                MetricsSystem.bootstrap(_metricsBridge)
+            }
+        } else {
+            _metricsBridge.setFactory(NOOPMetricsHandler.instance)
         }
 
         // 9. URLSession auto-instrumentation (Apple platforms)
@@ -322,7 +331,7 @@ public enum Signoz {
         _client = client
         _tracerProvider = tracerProvider
         _logProcessor = logProcessor
-        _meterProvider = builtMeterProvider
+        _meterProvider = meterProvider
         switch config.consoleLog {
         case .auto:
             #if DEBUG
@@ -356,6 +365,9 @@ public enum Signoz {
         _meterProvider = nil
         _consoleLogEnabled = false
         lock.unlock()
+
+        _metricsBridge.setFactory(NOOPMetricsHandler.instance)
+        OpenTelemetry.registerMeterProvider(meterProvider: DefaultMeterProvider.instance)
 
         // Flush and shut down providers
         tracerProvider?.forceFlush(timeout: 10)
@@ -421,6 +433,71 @@ public enum Signoz {
             .registerMetricReader(reader: reader)
             .setResource(resource: resource)
             .build()
+    }
+}
+
+// MARK: - Metrics Shim Bridge
+
+/// Delegates `swift-metrics` calls to the active `Signoz` metrics factory so
+/// `MetricsSystem.bootstrap` only needs to run once per process.
+final class OTelMetricsBridge: MetricsFactory, @unchecked Sendable {
+    private let lock = NSLock()
+    private var underlying: any MetricsFactory = NOOPMetricsHandler.instance
+
+    func setFactory(_ factory: any MetricsFactory) {
+        lock.lock()
+        underlying = factory
+        lock.unlock()
+    }
+
+    private var current: any MetricsFactory {
+        lock.lock()
+        defer { lock.unlock() }
+        return underlying
+    }
+
+    func makeCounter(label: String, dimensions: [(String, String)]) -> any CounterHandler {
+        current.makeCounter(label: label, dimensions: dimensions)
+    }
+
+    func makeFloatingPointCounter(
+        label: String, dimensions: [(String, String)]
+    ) -> any FloatingPointCounterHandler {
+        current.makeFloatingPointCounter(label: label, dimensions: dimensions)
+    }
+
+    func makeMeter(label: String, dimensions: [(String, String)]) -> any MeterHandler {
+        current.makeMeter(label: label, dimensions: dimensions)
+    }
+
+    func makeRecorder(
+        label: String, dimensions: [(String, String)], aggregate: Bool
+    ) -> any RecorderHandler {
+        current.makeRecorder(label: label, dimensions: dimensions, aggregate: aggregate)
+    }
+
+    func makeTimer(label: String, dimensions: [(String, String)]) -> any TimerHandler {
+        current.makeTimer(label: label, dimensions: dimensions)
+    }
+
+    func destroyCounter(_ handler: any CounterHandler) {
+        current.destroyCounter(handler)
+    }
+
+    func destroyMeter(_ handler: any MeterHandler) {
+        current.destroyMeter(handler)
+    }
+
+    func destroyFloatingPointCounter(_ handler: any FloatingPointCounterHandler) {
+        current.destroyFloatingPointCounter(handler)
+    }
+
+    func destroyRecorder(_ handler: any RecorderHandler) {
+        current.destroyRecorder(handler)
+    }
+
+    func destroyTimer(_ handler: any TimerHandler) {
+        current.destroyTimer(handler)
     }
 }
 

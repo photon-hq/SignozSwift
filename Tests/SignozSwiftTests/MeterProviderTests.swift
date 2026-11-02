@@ -1,7 +1,9 @@
+import CoreMetrics
 import Foundation
 import Testing
 import OpenTelemetryApi
 import OpenTelemetrySdk
+import SwiftMetricsShim
 @testable import SignozSwift
 
 /// Captures every batch the meter provider hands to its exporter.
@@ -64,5 +66,43 @@ struct MeterProviderTests {
         let metric = exporter.exported.first { $0.name == "duration_ms" }
         let points = metric?.data.points.compactMap { $0 as? HistogramPointData } ?? []
         #expect(points.map(\.count) == [1])
+    }
+
+    @Test("OTelMetricsBridge swaps backing factories and disables export on no-op")
+    func metricsBridgeSwapsFactories() {
+        let bridge = OTelMetricsBridge()
+        let firstExporter = CapturingMetricExporter()
+        let firstProvider = Signoz.makeMeterProvider(
+            exporter: firstExporter, resource: Resource(), exportInterval: 3600)
+        bridge.setFactory(
+            OpenTelemetrySwiftMetrics(meter: firstProvider.meterBuilder(name: "SwiftMetrics").build())
+        )
+
+        CoreMetrics.Counter(label: "bridge_requests_total", dimensions: [], factory: bridge).increment(by: 4)
+        _ = firstProvider.forceFlush()
+        #expect(
+            firstExporter.exported
+                .first { $0.name == "bridge_requests_total" }?
+                .data.points.compactMap { $0 as? LongPointData }.map(\.value) == [4]
+        )
+
+        bridge.setFactory(NOOPMetricsHandler.instance)
+        CoreMetrics.Counter(label: "bridge_dropped_total", dimensions: [], factory: bridge).increment(by: 9)
+
+        let secondExporter = CapturingMetricExporter()
+        let secondProvider = Signoz.makeMeterProvider(
+            exporter: secondExporter, resource: Resource(), exportInterval: 3600)
+        bridge.setFactory(
+            OpenTelemetrySwiftMetrics(meter: secondProvider.meterBuilder(name: "SwiftMetrics").build())
+        )
+
+        CoreMetrics.Counter(label: "bridge_requests_total", dimensions: [], factory: bridge).increment(by: 7)
+        _ = secondProvider.forceFlush()
+        #expect(secondExporter.exported.first { $0.name == "bridge_dropped_total" } == nil)
+        #expect(
+            secondExporter.exported
+                .first { $0.name == "bridge_requests_total" }?
+                .data.points.compactMap { $0 as? LongPointData }.map(\.value) == [7]
+        )
     }
 }
