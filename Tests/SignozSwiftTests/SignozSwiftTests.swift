@@ -1,6 +1,7 @@
+import CoreMetrics
 import Foundation
 import Testing
-import OpenTelemetryApi
+@preconcurrency import OpenTelemetryApi
 import OpenTelemetrySdk
 import InMemoryExporter
 import PersistenceExporter
@@ -749,6 +750,79 @@ struct IntegrationTests {
         #expect(
             logs.contains("verify collector log"),
             "Expected log 'verify collector log' in collector debug output"
+        )
+    }
+
+    @Test("Meter provider is registered when metricsShim is false and repeated metricsShim starts succeed")
+    func meterProviderAndRepeatedMetricsShimStart() {
+        Signoz.start(serviceName: "signoz-swift-metrics-disabled-shim") {
+            $0.spanProcessing = .simple
+            $0.autoInstrumentation.metricsShim = false
+        }
+        #expect(OpenTelemetry.instance.meterProvider is MeterProviderSdk)
+        Signoz.shutdown()
+        #expect(OpenTelemetry.instance.meterProvider is DefaultMeterProvider)
+
+        Signoz.start(serviceName: "signoz-swift-metrics-shim-first") {
+            $0.spanProcessing = .simple
+            $0.autoInstrumentation.metricsShim = true
+        }
+        _ = CoreMetrics.Counter(label: "signoz_swift_repeated_bootstrap_total")
+        Signoz.shutdown()
+
+        Signoz.start(serviceName: "signoz-swift-metrics-shim-second") {
+            $0.spanProcessing = .simple
+            $0.autoInstrumentation.metricsShim = true
+        }
+        _ = CoreMetrics.Counter(label: "signoz_swift_repeated_bootstrap_total")
+        Signoz.shutdown()
+    }
+
+    @Test("Exported metrics are received by collector")
+    func verifyCollectorReceivesMetrics() throws {
+        guard collectorIsRunning() else {
+            return  // Collector not running — skip gracefully
+        }
+
+        Signoz.start(serviceName: "signoz-swift-metrics-test") {
+            $0.spanProcessing = .simple
+            $0.autoInstrumentation.metricsShim = false
+        }
+        var otelOnlyCounter = OpenTelemetry.instance.meterProvider
+            .meterBuilder(name: "signoz-swift-tests").build()
+            .counterBuilder(name: "signoz_swift_verify_otel_no_shim_total").build()
+        otelOnlyCounter.add(value: 5, attributes: ["marker": .string("collector-check")])
+        Signoz.shutdown()
+
+        Signoz.start(serviceName: "signoz-swift-metrics-test") {
+            $0.spanProcessing = .simple
+            $0.autoInstrumentation.metricsShim = true
+        }
+
+        // OpenTelemetry Meter API
+        var counter = OpenTelemetry.instance.meterProvider
+            .meterBuilder(name: "signoz-swift-tests").build()
+            .counterBuilder(name: "signoz_swift_verify_otel_total").build()
+        counter.add(value: 7, attributes: ["marker": .string("collector-check")])
+        // swift-metrics, as Vapor's HTTP metrics use it
+        CoreMetrics.Counter(label: "signoz_swift_verify_shim_total").increment(by: 3)
+
+        // Shutdown force-flushes the meter provider before closing the client.
+        Signoz.shutdown()
+        Thread.sleep(forTimeInterval: 1.0)
+
+        let logs = dockerLogs(container: "otel-collector")
+        #expect(
+            logs.contains("signoz_swift_verify_otel_no_shim_total"),
+            "Expected metric 'signoz_swift_verify_otel_no_shim_total' in collector debug output"
+        )
+        #expect(
+            logs.contains("signoz_swift_verify_otel_total"),
+            "Expected metric 'signoz_swift_verify_otel_total' in collector debug output"
+        )
+        #expect(
+            logs.contains("signoz_swift_verify_shim_total"),
+            "Expected metric 'signoz_swift_verify_shim_total' in collector debug output"
         )
     }
 }

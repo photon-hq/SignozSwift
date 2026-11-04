@@ -292,6 +292,8 @@ let attrs: [String: AttributeValue] = [
 | `signpostIntegration` | `false` | Bridge spans to Xcode Instruments *(Apple platforms)* |
 | `metricsShim` | `true` | Bridge swift-metrics to OTel (enables Vapor HTTP metrics) |
 
+The swift-metrics bridge comes from opentelemetry-swift's `SwiftMetricsShim`, which keys each metric by name only: every later call reuses the dimensions of the first call with that name (upstream [open-telemetry/opentelemetry-swift#1231](https://github.com/open-telemetry/opentelemetry-swift/issues/1231)), and swift-metrics timers are exported as a cumulative nanosecond counter rather than a histogram. For metrics whose attributes matter, record them with the OpenTelemetry `Meter` API (`OpenTelemetry.instance.meterProvider`) instead.
+
 ## SigNoz Dashboard Mapping
 
 | Configuration | Resource Attribute | SigNoz Filter |
