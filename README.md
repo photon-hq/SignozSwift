@@ -349,7 +349,7 @@ docker stop otel-collector
 
 ## License
 
-MIT
+Apache-2.0
 
 ## Background log export
 
