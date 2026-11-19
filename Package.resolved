@@ -1,5 +1,5 @@
 {
-  "originHash" : "240fed8717a04b633a401e3d362f4c4194cd751a7a963ec3a135672441fe7a54",
+  "originHash" : "16bd4a997acc3809c67822651ef1a22e9027d1c80d9d5f7c3dbd87b878b70e80",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -78,8 +78,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/photon-hq/opentelemetry-swift",
       "state" : {
-        "revision" : "411089534ba5a2145fd0069d375c61f95ade9426",
-        "version" : "3.0.0"
+        "revision" : "fca96154d1a9aeea8c5f3a99cbb773bfbdf1d2a7",
+        "version" : "3.0.1"
       }
     },
     {
